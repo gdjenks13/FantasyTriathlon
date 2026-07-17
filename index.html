@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Fantasy Triathlon</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div class="app-header">
+  <div class="header-top-row">
+    <div>
+      <div class="eyebrow">Race Day Fantasy</div>
+      <h1 id="header-title">Predictions</h1>
+    </div>
+    <button class="btn-header-action" id="save-results-btn" style="display:none;">Save Results</button>
+  </div>
+  <div class="save-indicator" id="save-indicator">All changes saved</div>
+</div>
+
+<!-- ============ PREDICTIONS VIEW ============ -->
+<div class="view active" id="view-predictions">
+
+  <div class="add-player-row">
+    <input type="text" id="new-player-name" placeholder="Fantasy player name" maxlength="40">
+    <button class="btn-primary" style="width:auto;" id="add-player-btn">Add</button>
+  </div>
+
+  <div id="players-list"></div>
+
+  <div class="empty-state" id="players-empty" style="display:none;">
+    <div class="big">&#127937;</div>
+    <div>No fantasy players yet.<br>Add one above to start predicting.</div>
+  </div>
+</div>
+
+<!-- ============ RESULTS VIEW ============ -->
+<div class="view" id="view-results">
+  <div class="card">
+    <div class="section-title" style="margin-top:0;">Official Race Results</div>
+    <div id="results-athletes"></div>
+  </div>
+
+  <div class="card" id="results-summary-card" style="display:none;">
+    <div class="section-title" style="margin-top:0;">Computed Summary</div>
+    <div id="results-summary"></div>
+  </div>
+</div>
+
+<!-- ============ VIEW PREDICTIONS TAB ============ -->
+<div class="view" id="view-viewpredictions">
+  <div class="section-title" style="margin-top:6px;">Everyone's Predictions</div>
+  <div id="view-predictions-list"></div>
+  <div class="empty-state" id="view-predictions-empty" style="display:none;">
+    <div class="big">&#128203;</div>
+    <div>No saved predictions yet.<br>Save a prediction from the Predictions tab.</div>
+  </div>
+
+  <div id="prediction-stats-wrap"></div>
+</div>
+
+<!-- ============ LEADERBOARD VIEW ============ -->
+<div class="view" id="view-leaderboard">
+  <div id="leaderboard-list"></div>
+  <div class="empty-state" id="leaderboard-empty" style="display:none;">
+    <div class="big">&#127942;</div>
+    <div>Add players and enter results to see the leaderboard.</div>
+  </div>
+
+  <div id="athlete-vs-average-wrap"></div>
+
+  <div class="footer-actions" id="clear-data-wrap">
+    <hr class="divider">
+    <button class="btn-danger" id="clear-data-btn">Clear All Data</button>
+  </div>
+</div>
+
+<div class="tab-bar">
+  <button class="tab-btn active" data-view="predictions">
+    <span class="tab-icon">&#128221;</span>Predict
+  </button>
+  <button class="tab-btn" data-view="results">
+    <span class="tab-icon">&#127937;</span>Results
+  </button>
+  <button class="tab-btn" data-view="viewpredictions">
+    <span class="tab-icon">&#128203;</span>View
+  </button>
+  <button class="tab-btn" data-view="leaderboard">
+    <span class="tab-icon">&#127942;</span>Leaders
+  </button>
+</div>
+
+<div class="toast" id="toast">Saved</div>
+
+<script src="app.js"></script>
+</body>
+</html>
