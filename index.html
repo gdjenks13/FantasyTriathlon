@@ -36,11 +36,7 @@
           >
             Results Saved ✓
           </button>
-          <button
-            class="btn-header-action"
-            id="header-login-btn"
-            type="button"
-          >
+          <button class="btn-header-action" id="header-login-btn" type="button">
             Log in
           </button>
         </div>
@@ -65,22 +61,24 @@
       >
         <div class="login-modal-head">
           <h2 id="login-modal-title">Editor log in</h2>
-          <button type="button" class="icon-btn" id="login-modal-close" title="Close">
+          <button
+            type="button"
+            class="icon-btn"
+            id="login-modal-close"
+            title="Close"
+          >
             ✕
           </button>
         </div>
-        <p class="helper-text" style="margin-top: 0">
-          Use the email and password from Supabase
-          <strong>Authentication → Users</strong> (not the database password).
-          Spectators do not need to log in.
-        </p>
         <div class="field-group">
           <label for="cloud-email">Editor email</label>
           <input
             type="email"
             id="cloud-email"
-            autocomplete="username"
-            placeholder="name@example.com"
+            autocomplete="off"
+            autocapitalize="off"
+            spellcheck="false"
+            placeholder="Enter email"
           />
         </div>
         <div class="field-group">
@@ -88,8 +86,8 @@
           <input
             type="password"
             id="cloud-password"
-            autocomplete="current-password"
-            placeholder="Auth user password"
+            autocomplete="off"
+            placeholder="Enter password"
           />
         </div>
         <button class="btn-primary" type="button" id="cloud-login-btn">
@@ -171,7 +169,11 @@
       <div class="footer-actions" id="data-tools-wrap">
         <hr class="divider" />
 
-        <div class="card cloud-card" id="cloud-editor-bar" style="display: none">
+        <div
+          class="card cloud-card"
+          id="cloud-editor-bar"
+          style="display: none"
+        >
           <p class="cloud-editor-line" style="margin-top: 0">
             Signed in as <strong id="cloud-user-email"></strong>
           </p>
@@ -293,23 +295,33 @@
             <tbody>
               <tr>
                 <td>Exact rank</td>
-                <td class="score-pts-col"><span class="pts-pill pts-pill-high">5</span></td>
+                <td class="score-pts-col">
+                  <span class="pts-pill pts-pill-high">5</span>
+                </td>
               </tr>
               <tr>
                 <td>Off by 1 place</td>
-                <td class="score-pts-col"><span class="pts-pill pts-pill-mid">3</span></td>
+                <td class="score-pts-col">
+                  <span class="pts-pill pts-pill-mid">3</span>
+                </td>
               </tr>
               <tr>
                 <td>Off by 2 places</td>
-                <td class="score-pts-col"><span class="pts-pill pts-pill-low">1</span></td>
+                <td class="score-pts-col">
+                  <span class="pts-pill pts-pill-low">1</span>
+                </td>
               </tr>
               <tr>
                 <td>Off by 3+ places</td>
-                <td class="score-pts-col"><span class="pts-pill pts-pill-zero">0</span></td>
+                <td class="score-pts-col">
+                  <span class="pts-pill pts-pill-zero">0</span>
+                </td>
               </tr>
             </tbody>
           </table>
-          <p class="score-footnote">Ties use rank ranges (e.g. 2–3 both count as a hit).</p>
+          <p class="score-footnote">
+            Ties use rank ranges (e.g. 2–3 both count as a hit).
+          </p>
         </div>
 
         <!-- Time accuracy -->
@@ -330,12 +342,42 @@
                   </tr>
                 </thead>
                 <tbody>
-                  <tr><td>≤ 30 sec</td><td class="score-pts-col"><span class="pts-pill pts-pill-high">10</span></td></tr>
-                  <tr><td>≤ 1 min</td><td class="score-pts-col"><span class="pts-pill pts-pill-high">8</span></td></tr>
-                  <tr><td>≤ 3 min</td><td class="score-pts-col"><span class="pts-pill pts-pill-mid">6</span></td></tr>
-                  <tr><td>≤ 5 min</td><td class="score-pts-col"><span class="pts-pill pts-pill-mid">4</span></td></tr>
-                  <tr><td>≤ 10 min</td><td class="score-pts-col"><span class="pts-pill pts-pill-low">2</span></td></tr>
-                  <tr><td>Over 10 min</td><td class="score-pts-col"><span class="pts-pill pts-pill-zero">0</span></td></tr>
+                  <tr>
+                    <td>≤ 30 sec</td>
+                    <td class="score-pts-col">
+                      <span class="pts-pill pts-pill-high">10</span>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>≤ 1 min</td>
+                    <td class="score-pts-col">
+                      <span class="pts-pill pts-pill-high">8</span>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>≤ 3 min</td>
+                    <td class="score-pts-col">
+                      <span class="pts-pill pts-pill-mid">6</span>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>≤ 5 min</td>
+                    <td class="score-pts-col">
+                      <span class="pts-pill pts-pill-mid">4</span>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>≤ 10 min</td>
+                    <td class="score-pts-col">
+                      <span class="pts-pill pts-pill-low">2</span>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>Over 10 min</td>
+                    <td class="score-pts-col">
+                      <span class="pts-pill pts-pill-zero">0</span>
+                    </td>
+                  </tr>
                 </tbody>
               </table>
             </div>
@@ -350,12 +392,42 @@
                   </tr>
                 </thead>
                 <tbody>
-                  <tr><td>≤ 30 sec</td><td class="score-pts-col"><span class="pts-pill pts-pill-high">10</span></td></tr>
-                  <tr><td>≤ 2 min</td><td class="score-pts-col"><span class="pts-pill pts-pill-high">8</span></td></tr>
-                  <tr><td>≤ 5 min</td><td class="score-pts-col"><span class="pts-pill pts-pill-mid">6</span></td></tr>
-                  <tr><td>≤ 10 min</td><td class="score-pts-col"><span class="pts-pill pts-pill-mid">4</span></td></tr>
-                  <tr><td>≤ 15 min</td><td class="score-pts-col"><span class="pts-pill pts-pill-low">2</span></td></tr>
-                  <tr><td>Over 15 min</td><td class="score-pts-col"><span class="pts-pill pts-pill-zero">0</span></td></tr>
+                  <tr>
+                    <td>≤ 30 sec</td>
+                    <td class="score-pts-col">
+                      <span class="pts-pill pts-pill-high">10</span>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>≤ 2 min</td>
+                    <td class="score-pts-col">
+                      <span class="pts-pill pts-pill-high">8</span>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>≤ 5 min</td>
+                    <td class="score-pts-col">
+                      <span class="pts-pill pts-pill-mid">6</span>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>≤ 10 min</td>
+                    <td class="score-pts-col">
+                      <span class="pts-pill pts-pill-mid">4</span>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>≤ 15 min</td>
+                    <td class="score-pts-col">
+                      <span class="pts-pill pts-pill-low">2</span>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>Over 15 min</td>
+                    <td class="score-pts-col">
+                      <span class="pts-pill pts-pill-zero">0</span>
+                    </td>
+                  </tr>
                 </tbody>
               </table>
             </div>
@@ -371,10 +443,30 @@
                   </tr>
                 </thead>
                 <tbody>
-                  <tr><td>≤ 30 sec</td><td class="score-pts-col"><span class="pts-pill pts-pill-high">4</span></td></tr>
-                  <tr><td>≤ 2 min</td><td class="score-pts-col"><span class="pts-pill pts-pill-mid">2</span></td></tr>
-                  <tr><td>≤ 4 min</td><td class="score-pts-col"><span class="pts-pill pts-pill-low">1</span></td></tr>
-                  <tr><td>Over 4 min</td><td class="score-pts-col"><span class="pts-pill pts-pill-zero">0</span></td></tr>
+                  <tr>
+                    <td>≤ 30 sec</td>
+                    <td class="score-pts-col">
+                      <span class="pts-pill pts-pill-high">4</span>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>≤ 2 min</td>
+                    <td class="score-pts-col">
+                      <span class="pts-pill pts-pill-mid">2</span>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>≤ 4 min</td>
+                    <td class="score-pts-col">
+                      <span class="pts-pill pts-pill-low">1</span>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>Over 4 min</td>
+                    <td class="score-pts-col">
+                      <span class="pts-pill pts-pill-zero">0</span>
+                    </td>
+                  </tr>
                 </tbody>
               </table>
             </div>
@@ -395,19 +487,23 @@
             <tbody>
               <tr>
                 <td>3rd-fastest <strong>T1</strong></td>
-                <td class="score-pts-col"><span class="pts-pill pts-pill-high">+5</span></td>
+                <td class="score-pts-col">
+                  <span class="pts-pill pts-pill-high">+5</span>
+                </td>
               </tr>
               <tr>
                 <td>3rd-fastest <strong>T2</strong></td>
-                <td class="score-pts-col"><span class="pts-pill pts-pill-high">+5</span></td>
+                <td class="score-pts-col">
+                  <span class="pts-pill pts-pill-high">+5</span>
+                </td>
               </tr>
             </tbody>
           </table>
         </div>
 
         <p class="rules-note">
-          Highest total fantasy points wins. See the <strong>Race</strong> tab for
-          live standings once official times are entered.
+          Highest total fantasy points wins. See the <strong>Race</strong> tab
+          for live standings once official times are entered.
         </p>
       </div>
     </div>

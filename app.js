@@ -308,18 +308,21 @@
   function openLoginModal() {
     var modal = document.getElementById("login-modal");
     if (!modal) return;
-    var cfg = getConfig();
     var emailInput = document.getElementById("cloud-email");
-    if (emailInput && !emailInput.value && cfg.editorEmail) {
-      emailInput.value = cfg.editorEmail;
+    var pw = document.getElementById("cloud-password");
+    // Never autofill — editor must type email and password each time
+    if (emailInput) emailInput.value = "";
+    if (pw) pw.value = "";
+    var errEl = document.getElementById("cloud-login-error");
+    if (errEl) {
+      errEl.style.display = "none";
+      errEl.textContent = "";
     }
     modal.style.display = "flex";
     modal.removeAttribute("hidden");
     modal.setAttribute("aria-hidden", "false");
     setTimeout(function () {
-      var pw = document.getElementById("cloud-password");
-      if (emailInput && !emailInput.value) emailInput.focus();
-      else if (pw) pw.focus();
+      if (emailInput) emailInput.focus();
     }, 50);
   }
 
@@ -335,12 +338,6 @@
     var editorBar = document.getElementById("cloud-editor-bar");
     var emailEl = document.getElementById("cloud-user-email");
     var headerLogin = document.getElementById("header-login-btn");
-    var emailInput = document.getElementById("cloud-email");
-    var cfg = getConfig();
-
-    if (emailInput && !emailInput.value && cfg.editorEmail) {
-      emailInput.value = cfg.editorEmail;
-    }
 
     if (!hasCloudConfig()) {
       if (editorBar) editorBar.style.display = "none";
@@ -731,12 +728,6 @@
         },
       });
       setCloudStatus("Cloud: connecting…");
-
-      // Prefill editor email early so login is obvious
-      var emailInput = document.getElementById("cloud-email");
-      if (emailInput && !emailInput.value && cfg.editorEmail) {
-        emailInput.value = cfg.editorEmail;
-      }
 
       try {
         var sessionRes = await withTimeout(
@@ -1538,9 +1529,9 @@
   // Time input: ONE text field, entered like a stopwatch/calculator -- the user
   // just types digits (numeric keypad pops up on mobile) and they fill in from
   // the right: "1234" -> 12:34, "13045" -> 1:30:45, "12345" -> 1:23:45.
-  // Backspace removes the last digit. No tapping between separate H/M/S boxes,
-  // and no need to type leading zeros. Committed to the DRAFT on blur/Enter/change
-  // (no localStorage write here -- persistence happens via explicit Save actions).
+  // Backspace removes the last digit. Typing after focus/select replaces the
+  // value so previously saved times can be edited easily.
+  // Committed to the DRAFT on blur/Enter/change (no localStorage write here).
   function buildTimeInput(seconds, onChange) {
     var row = document.createElement("div");
     row.className = "time-entry-row";
@@ -1555,14 +1546,28 @@
 
     // raw digit buffer, e.g. "12345" (most-recent digit typed is at the end)
     var digits = secondsToDigitString(seconds);
+    // After focus (or full selection), the next digit replaces instead of appends
+    var replaceNext = false;
 
     function render() {
       inp.value = digitStringToDisplay(digits);
     }
     render();
 
+    function wholeFieldSelected() {
+      try {
+        return (
+          inp.selectionStart === 0 &&
+          inp.selectionEnd === (inp.value ? inp.value.length : 0)
+        );
+      } catch (e) {
+        return false;
+      }
+    }
+
     function commit() {
       if (!canEditData()) return;
+      replaceNext = false;
       if (digits === "") {
         onChange(null);
         return;
@@ -1586,17 +1591,25 @@
       }
       if (e.key === "Backspace") {
         e.preventDefault();
-        digits = digits.slice(0, -1);
+        if (replaceNext || wholeFieldSelected()) {
+          digits = "";
+          replaceNext = false;
+        } else {
+          digits = digits.slice(0, -1);
+        }
         render();
         return;
       }
       if (/^[0-9]$/.test(e.key)) {
         e.preventDefault();
-        if (digits.length < 6) {
-          // cap at HH:MM:SS (6 digits)
+        if (replaceNext || wholeFieldSelected() || digits.length === 0) {
+          digits = e.key;
+          replaceNext = false;
+        } else if (digits.length < 6) {
           digits += e.key;
-          render();
         }
+        // If already 6 digits and not replacing, ignore extra keystrokes
+        render();
         return;
       }
       // block any other character (letters, symbols, etc.)
@@ -1606,7 +1619,9 @@
     // Handles paste, or mobile keyboards that don't fire clean keydown events.
     inp.addEventListener("input", function () {
       var onlyDigits = inp.value.replace(/[^0-9]/g, "").slice(-6);
+      // If user selected all and typed, the browser may leave a short digit string
       digits = onlyDigits;
+      replaceNext = false;
       render();
     });
 
@@ -1617,7 +1632,11 @@
         inp.blur();
         return;
       }
-      inp.select();
+      replaceNext = true;
+      // Select all so the next keystroke replaces the previous time
+      try {
+        inp.select();
+      } catch (e) {}
     });
 
     if (!canEditData()) {

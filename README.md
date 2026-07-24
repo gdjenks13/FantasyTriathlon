@@ -43,7 +43,6 @@ Dashboard → **Project Settings** → **API**:
 window.FANTASY_CONFIG = {
   supabaseUrl: "https://ayicngoasguoqegxoptd.supabase.co",
   supabaseAnonKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  editorEmail: "editor@example.com", // optional prefill
   pollIntervalMs: 5000,
 };
 ```

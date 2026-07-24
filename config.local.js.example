@@ -3,5 +3,4 @@
 window.FANTASY_CONFIG = Object.assign({}, window.FANTASY_CONFIG || {}, {
   supabaseUrl: "https://ayicngoasguoqegxoptd.supabase.co",
   supabaseAnonKey: "PASTE_ANON_PUBLIC_KEY_HERE",
-  editorEmail: "your-editor@email.com",
 });
