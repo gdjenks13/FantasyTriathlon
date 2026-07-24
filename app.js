@@ -6,12 +6,19 @@
     "Nick Bame",
     "David De Genaro",
     "Glenn Jenkins",
+    "Caleb Schimming",
     "Noah Thammavong",
     "Nathan Webb",
   ];
   var STORAGE_KEY = "fantasyTriathlonState_v2";
+  var SWIM_YARDS = 1640.42;
+  var BIKE_MILES = 25.6;
+  var RUN_MILES = 6.213712;
 
   var RANK_POINTS = { 0: 5, 1: 3, 2: 1 }; // diff in rank -> points, else 0
+  var MAX_RANK_PTS = 5;
+  var MAX_TIME_PTS = { swim: 10, bike: 10, run: 10, transition: 4 };
+  var MAX_WILDCARD_PTS = 5;
 
   var TIME_POINT_TABLES = {
     swim: [
@@ -80,43 +87,79 @@
     return p;
   }
 
+  function emptyAthleteResult() {
+    return { swim: null, t1: null, bike: null, t2: null, run: null };
+  }
+
+  function emptyAthletePrediction() {
+    return { swim: null, bike: null, run: null, transition: null };
+  }
+
+  // Ensure every ATHLETE has result/prediction slots so roster growth (e.g. adding
+  // a 6th athlete) does not break existing localStorage data.
+  function normalizeState(parsed) {
+    if (!parsed || typeof parsed !== "object") return defaultState();
+    if (!Array.isArray(parsed.players)) parsed.players = [];
+    if (!parsed.results || typeof parsed.results !== "object") {
+      parsed.results = emptyResults();
+    }
+    ATHLETES.forEach(function (a) {
+      if (!parsed.results[a] || typeof parsed.results[a] !== "object") {
+        parsed.results[a] = emptyAthleteResult();
+      } else {
+        ["swim", "t1", "bike", "t2", "run"].forEach(function (k) {
+          if (typeof parsed.results[a][k] === "undefined") {
+            parsed.results[a][k] = null;
+          }
+        });
+      }
+    });
+    parsed.players.forEach(function (p) {
+      if (!p.predictions || typeof p.predictions !== "object") {
+        p.predictions = emptyPredictions();
+      }
+      if (!p.wildcards || typeof p.wildcards !== "object") {
+        p.wildcards = { t1: null, t2: null };
+      }
+      if (!p.draftPredictions || typeof p.draftPredictions !== "object") {
+        p.draftPredictions = deepCopy(p.predictions);
+      }
+      if (!p.draftWildcards || typeof p.draftWildcards !== "object") {
+        p.draftWildcards = deepCopy(p.wildcards);
+      }
+      ATHLETES.forEach(function (a) {
+        if (!p.predictions[a] || typeof p.predictions[a] !== "object") {
+          p.predictions[a] = emptyAthletePrediction();
+        }
+        if (
+          !p.draftPredictions[a] ||
+          typeof p.draftPredictions[a] !== "object"
+        ) {
+          p.draftPredictions[a] = emptyAthletePrediction();
+        }
+      });
+      if (typeof p.hasSavedPrediction !== "boolean") {
+        p.hasSavedPrediction = ATHLETES.some(function (a) {
+          var pr = p.predictions[a];
+          return (
+            pr &&
+            (pr.swim !== null ||
+              pr.bike !== null ||
+              pr.run !== null ||
+              pr.transition !== null)
+          );
+        });
+      }
+      if (typeof p.open !== "boolean") p.open = false;
+    });
+    return parsed;
+  }
+
   function loadState() {
     try {
       var raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) return defaultState();
-      var parsed = JSON.parse(raw);
-      if (!parsed.players) parsed.players = [];
-      if (!parsed.results) parsed.results = emptyResults();
-      ATHLETES.forEach(function (a) {
-        if (!parsed.results[a])
-          parsed.results[a] = {
-            swim: null,
-            t1: null,
-            bike: null,
-            t2: null,
-            run: null,
-          };
-      });
-      parsed.players.forEach(function (p) {
-        if (!p.predictions) p.predictions = emptyPredictions();
-        if (!p.wildcards) p.wildcards = { t1: null, t2: null };
-        // draft mirrors saved data initially; deep copy so editing draft doesn't mutate saved
-        if (!p.draftPredictions) p.draftPredictions = deepCopy(p.predictions);
-        if (!p.draftWildcards) p.draftWildcards = deepCopy(p.wildcards);
-        if (typeof p.hasSavedPrediction !== "boolean") {
-          p.hasSavedPrediction = ATHLETES.some(function (a) {
-            var pr = p.predictions[a];
-            return (
-              pr.swim !== null ||
-              pr.bike !== null ||
-              pr.run !== null ||
-              pr.transition !== null
-            );
-          });
-        }
-        if (typeof p.open !== "boolean") p.open = false;
-      });
-      return parsed;
+      return normalizeState(JSON.parse(raw));
     } catch (e) {
       console.error("Failed to load state", e);
       return defaultState();
@@ -127,10 +170,30 @@
     return JSON.parse(JSON.stringify(obj));
   }
 
+  // Snapshot of results last known to be on disk (explicit save, load, import,
+  // or silent background flush). Used for dirty UI on the Results tab.
+  var resultsSavedSnapshot = null;
+
+  function captureResultsSnapshot() {
+    resultsSavedSnapshot = JSON.stringify(state.results);
+  }
+
+  function hasUnsavedResults() {
+    return JSON.stringify(state.results) !== resultsSavedSnapshot;
+  }
+
   function persistNow(silent) {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      // Background flush also lands results on disk — clear dirty UI.
+      captureResultsSnapshot();
+      updateResultsSaveButton();
+      updateSaveIndicator();
       if (!silent) showToast("Saved");
+      // Editor: push shared state so spectators see updates quickly
+      if (isEditor() && !applyingCloud) {
+        scheduleCloudPublish(silent);
+      }
     } catch (e) {
       console.error("Failed to save state", e);
       showToast("Save failed");
@@ -149,8 +212,9 @@
     }, 900);
   }
 
-  // Safety net: flush any saved-but-not-yet-written state if the tab is closed.
-  // (Draft edits are intentionally NOT flushed here -- only explicit Save actions persist drafts.)
+  // Safety net: flush current state if the tab is closed/backgrounded.
+  // Prediction drafts are included in state and recover on reopen; committed
+  // predictions still require explicit "Save Prediction" for scoring.
   document.addEventListener("visibilitychange", function () {
     if (document.visibilityState === "hidden") persistNow(true);
   });
@@ -164,16 +228,33 @@
     var unsavedCount = state.players.filter(function (p) {
       return hasUnsavedDraft(p);
     }).length;
+    var resultsDirty = hasUnsavedResults();
+    var parts = [];
     if (unsavedCount > 0) {
-      el.textContent =
+      parts.push(
         unsavedCount === 1
           ? "1 prediction has unsaved changes"
-          : unsavedCount + " predictions have unsaved changes";
+          : unsavedCount + " predictions have unsaved changes",
+      );
+    }
+    if (resultsDirty) {
+      parts.push("unsaved race results");
+    }
+    if (parts.length > 0) {
+      el.textContent = parts.join(" · ");
       el.classList.add("pending");
     } else {
       el.textContent = "All changes saved";
       el.classList.remove("pending");
     }
+  }
+
+  function updateResultsSaveButton() {
+    var btn = document.getElementById("save-results-btn");
+    if (!btn) return;
+    var dirty = hasUnsavedResults();
+    btn.className = "btn-header-action" + (dirty ? "" : " is-saved");
+    btn.textContent = dirty ? "Save Results" : "Results Saved \u2713";
   }
 
   function hasUnsavedDraft(player) {
@@ -182,6 +263,417 @@
         JSON.stringify(player.predictions) ||
       JSON.stringify(player.draftWildcards) !== JSON.stringify(player.wildcards)
     );
+  }
+
+  // After loadState() ran above, baseline the results snapshot.
+  captureResultsSnapshot();
+
+  /* ===================== SUPABASE CLOUD SYNC ===================== */
+  var supabaseClient = null;
+  var authUser = null;
+  var applyingCloud = false;
+  var cloudConfigured = false;
+  var cloudLastRemoteAt = null;
+  var cloudPublishTimer = null;
+  var cloudPollTimer = null;
+  var cloudChannel = null;
+
+  function getConfig() {
+    return window.FANTASY_CONFIG || {};
+  }
+
+  function isEditor() {
+    return !!(authUser && supabaseClient);
+  }
+
+  function setCloudStatus(text, kind) {
+    var el = document.getElementById("cloud-status");
+    if (!el) return;
+    el.textContent = text;
+    el.className = "cloud-status" + (kind ? " " + kind : "");
+  }
+
+  function updateEditorUI() {
+    var loginForm = document.getElementById("cloud-login-form");
+    var editorBar = document.getElementById("cloud-editor-bar");
+    var emailEl = document.getElementById("cloud-user-email");
+    var hint = document.getElementById("cloud-mode-hint");
+    if (!loginForm || !editorBar) return;
+
+    if (!cloudConfigured) {
+      loginForm.style.display = "none";
+      editorBar.style.display = "none";
+      if (hint) {
+        hint.textContent =
+          "Cloud is not configured yet. Add your Supabase anon key to config.js (see README).";
+      }
+      document.body.classList.remove("spectator-mode");
+      return;
+    }
+
+    if (isEditor()) {
+      loginForm.style.display = "none";
+      editorBar.style.display = "block";
+      if (emailEl) emailEl.textContent = authUser.email || "editor";
+      if (hint) {
+        hint.textContent =
+          "Editor mode: your saves publish to the cloud for all spectators.";
+      }
+      document.body.classList.remove("spectator-mode");
+      setCloudStatus(
+        "Editor · signed in" +
+          (cloudLastRemoteAt
+            ? " · last publish " + formatCloudTime(cloudLastRemoteAt)
+            : ""),
+        "editor",
+      );
+    } else {
+      loginForm.style.display = "block";
+      editorBar.style.display = "none";
+      if (hint) {
+        hint.textContent =
+          "Spectator mode: viewing shared cloud data. Log in only if you are the race editor.";
+      }
+      document.body.classList.add("spectator-mode");
+      setCloudStatus(
+        "Spectator · live" +
+          (cloudLastRemoteAt
+            ? " · updated " + formatCloudTime(cloudLastRemoteAt)
+            : ""),
+        "ok",
+      );
+    }
+
+    // Prefill editor email from config once
+    var emailInput = document.getElementById("cloud-email");
+    var cfg = getConfig();
+    if (emailInput && !emailInput.value && cfg.editorEmail) {
+      emailInput.value = cfg.editorEmail;
+    }
+  }
+
+  function formatCloudTime(iso) {
+    try {
+      var d = new Date(iso);
+      if (isNaN(d.getTime())) return "";
+      return d.toLocaleTimeString([], {
+        hour: "numeric",
+        minute: "2-digit",
+        second: "2-digit",
+      });
+    } catch (e) {
+      return "";
+    }
+  }
+
+  function stripUiFlags(rawState) {
+    // Don't publish ephemeral UI open/closed flags
+    var copy = deepCopy(rawState);
+    if (copy && Array.isArray(copy.players)) {
+      copy.players.forEach(function (p) {
+        delete p.open;
+        delete p._viewOpen;
+        delete p._lbOpen;
+        // Drafts are local editing — publish saved predictions only
+        // but keep drafts as mirrors of saved for simpler restore
+        if (p.predictions) p.draftPredictions = deepCopy(p.predictions);
+        if (p.wildcards) p.draftWildcards = deepCopy(p.wildcards);
+      });
+    }
+    delete copy._resultsOrdersOpen;
+    return copy;
+  }
+
+  function applyRemoteState(payload, updatedAt, opts) {
+    opts = opts || {};
+    applyingCloud = true;
+    try {
+      state = normalizeState(deepCopy(payload || defaultState()));
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      } catch (e) {}
+      captureResultsSnapshot();
+      cloudLastRemoteAt = updatedAt || null;
+      if (opts.rerender !== false) {
+        renderAllViews();
+      }
+      updateSaveIndicator();
+      updateResultsSaveButton();
+      updateEditorUI();
+    } finally {
+      applyingCloud = false;
+    }
+  }
+
+  function renderAllViews() {
+    renderPlayers();
+    if (currentView === "pool") renderViewPredictions();
+    if (currentView === "race") {
+      renderLeaderboard();
+      renderResults();
+    }
+    if (currentView === "compare") renderPlayerCompare();
+  }
+
+  async function pullCloudState(opts) {
+    opts = opts || {};
+    if (!supabaseClient) return null;
+    try {
+      var res = await supabaseClient
+        .from("app_state")
+        .select("payload, updated_at, updated_by")
+        .eq("id", 1)
+        .maybeSingle();
+      if (res.error) {
+        console.error("Cloud pull failed", res.error);
+        if (opts.initial) {
+          setCloudStatus("Cloud error: " + (res.error.message || "pull failed"), "err");
+        }
+        return null;
+      }
+      if (!res.data) {
+        if (opts.initial) setCloudStatus("Cloud: empty — publish once as editor", "warn");
+        return null;
+      }
+      var remoteAt = res.data.updated_at;
+      var shouldApply = !!opts.force;
+      if (!shouldApply && !isEditor()) {
+        // Spectators always take remote
+        shouldApply =
+          !cloudLastRemoteAt ||
+          new Date(remoteAt).getTime() > new Date(cloudLastRemoteAt).getTime() ||
+          opts.initial;
+      }
+      if (!shouldApply && isEditor() && opts.initial) {
+        // Editor: prefer local if it has more data; else take cloud
+        var localPlayers = (state.players && state.players.length) || 0;
+        var remotePlayers =
+          (res.data.payload &&
+            res.data.payload.players &&
+            res.data.payload.players.length) ||
+          0;
+        shouldApply = remotePlayers > 0 && localPlayers === 0;
+      }
+      if (shouldApply) {
+        applyRemoteState(res.data.payload, remoteAt, { rerender: true });
+        if (!opts.silent && !opts.initial) showToast("Updated from cloud");
+      } else {
+        cloudLastRemoteAt = remoteAt;
+        updateEditorUI();
+      }
+      return res.data;
+    } catch (e) {
+      console.error("Cloud pull exception", e);
+      if (opts.initial) setCloudStatus("Cloud unreachable", "err");
+      return null;
+    }
+  }
+
+  async function pushCloudState(opts) {
+    opts = opts || {};
+    if (!supabaseClient || !isEditor()) {
+      if (!opts.silent) showToast("Log in to publish");
+      return false;
+    }
+    try {
+      var payload = stripUiFlags(state);
+      var now = new Date().toISOString();
+      var res = await supabaseClient.from("app_state").upsert(
+        {
+          id: 1,
+          payload: payload,
+          updated_at: now,
+          updated_by: authUser.email || authUser.id,
+        },
+        { onConflict: "id" },
+      );
+      if (res.error) {
+        console.error("Cloud publish failed", res.error);
+        setCloudStatus("Publish failed: " + res.error.message, "err");
+        if (!opts.silent) showToast("Publish failed");
+        return false;
+      }
+      cloudLastRemoteAt = now;
+      updateEditorUI();
+      if (!opts.silent) showToast("Published to cloud");
+      return true;
+    } catch (e) {
+      console.error("Cloud publish exception", e);
+      if (!opts.silent) showToast("Publish failed");
+      return false;
+    }
+  }
+
+  function scheduleCloudPublish(silent) {
+    clearTimeout(cloudPublishTimer);
+    cloudPublishTimer = setTimeout(function () {
+      pushCloudState({ silent: !!silent });
+    }, 400);
+  }
+
+  function subscribeCloudRealtime() {
+    if (!supabaseClient || cloudChannel) return;
+    try {
+      cloudChannel = supabaseClient
+        .channel("app_state_live")
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "app_state",
+            filter: "id=eq.1",
+          },
+          function (payload) {
+            if (isEditor() && applyingCloud) return;
+            var row = payload.new;
+            if (!row || !row.payload) return;
+            // Editors ignore remote echoes of their own push unless forced
+            if (isEditor()) {
+              if (
+                cloudLastRemoteAt &&
+                row.updated_at &&
+                new Date(row.updated_at).getTime() <=
+                  new Date(cloudLastRemoteAt).getTime() + 500
+              ) {
+                return;
+              }
+              // Don't clobber in-progress editor work from own device
+              return;
+            }
+            applyRemoteState(row.payload, row.updated_at, { rerender: true });
+            showToast("Live update");
+          },
+        )
+        .subscribe(function (status) {
+          if (status === "SUBSCRIBED" && !isEditor()) {
+            setCloudStatus(
+              "Spectator · live" +
+                (cloudLastRemoteAt
+                  ? " · updated " + formatCloudTime(cloudLastRemoteAt)
+                  : ""),
+              "ok",
+            );
+          }
+        });
+    } catch (e) {
+      console.warn("Realtime subscribe failed", e);
+    }
+  }
+
+  function startCloudPoll() {
+    var ms = getConfig().pollIntervalMs || 5000;
+    clearInterval(cloudPollTimer);
+    cloudPollTimer = setInterval(function () {
+      if (!supabaseClient) return;
+      // Spectators poll; editors only refresh status quietly
+      pullCloudState({ silent: true, force: false });
+    }, ms);
+  }
+
+  async function cloudLogin(email, password) {
+    var errEl = document.getElementById("cloud-login-error");
+    if (errEl) {
+      errEl.style.display = "none";
+      errEl.textContent = "";
+    }
+    if (!supabaseClient) return;
+    var res = await supabaseClient.auth.signInWithPassword({
+      email: email,
+      password: password,
+    });
+    if (res.error) {
+      if (errEl) {
+        errEl.style.display = "block";
+        errEl.textContent = res.error.message || "Login failed";
+      }
+      showToast("Login failed");
+      return;
+    }
+    authUser = res.data.user;
+    updateEditorUI();
+    renderAllViews();
+    showToast("Logged in as editor");
+  }
+
+  async function cloudLogout() {
+    if (supabaseClient) await supabaseClient.auth.signOut();
+    authUser = null;
+    updateEditorUI();
+    await pullCloudState({ force: true, silent: true });
+    renderAllViews();
+    showToast("Logged out");
+  }
+
+  async function initCloud() {
+    var cfg = getConfig();
+    var url = cfg.supabaseUrl || "";
+    var key = (cfg.supabaseAnonKey || "").trim();
+    if (!url || !key) {
+      cloudConfigured = false;
+      setCloudStatus("Cloud not configured (add anon key)", "warn");
+      updateEditorUI();
+      return;
+    }
+    if (typeof supabase === "undefined" || !supabase.createClient) {
+      cloudConfigured = false;
+      setCloudStatus("Cloud library failed to load", "err");
+      return;
+    }
+    cloudConfigured = true;
+    supabaseClient = supabase.createClient(url, key);
+    setCloudStatus("Cloud: connecting…");
+
+    var sessionRes = await supabaseClient.auth.getSession();
+    authUser =
+      sessionRes.data && sessionRes.data.session
+        ? sessionRes.data.session.user
+        : null;
+
+    supabaseClient.auth.onAuthStateChange(function (_event, session) {
+      authUser = session ? session.user : null;
+      updateEditorUI();
+      renderAllViews();
+    });
+
+    await pullCloudState({ initial: true, silent: true });
+    subscribeCloudRealtime();
+    startCloudPoll();
+    updateEditorUI();
+    renderAllViews();
+  }
+
+  function wireCloudUI() {
+    var loginBtn = document.getElementById("cloud-login-btn");
+    if (loginBtn) {
+      loginBtn.addEventListener("click", function () {
+        var email = (document.getElementById("cloud-email").value || "").trim();
+        var password = document.getElementById("cloud-password").value || "";
+        if (!email || !password) {
+          showToast("Enter email and password");
+          return;
+        }
+        cloudLogin(email, password);
+      });
+    }
+    var logoutBtn = document.getElementById("cloud-logout-btn");
+    if (logoutBtn) {
+      logoutBtn.addEventListener("click", function () {
+        cloudLogout();
+      });
+    }
+    var publishBtn = document.getElementById("cloud-publish-btn");
+    if (publishBtn) {
+      publishBtn.addEventListener("click", function () {
+        pushCloudState({ silent: false });
+      });
+    }
+    var pw = document.getElementById("cloud-password");
+    if (pw) {
+      pw.addEventListener("keydown", function (e) {
+        if (e.key === "Enter") loginBtn && loginBtn.click();
+      });
+    }
   }
 
   /* ===================== TIME HELPERS ===================== */
@@ -360,82 +852,175 @@
     return 0;
   }
 
+  function rankOffBy(predictedRank, actualRankInfo) {
+    if (
+      !actualRankInfo ||
+      predictedRank === null ||
+      predictedRank === undefined
+    )
+      return null;
+    if (
+      predictedRank >= actualRankInfo.start &&
+      predictedRank <= actualRankInfo.end
+    )
+      return 0;
+    if (predictedRank < actualRankInfo.start)
+      return actualRankInfo.start - predictedRank;
+    return predictedRank - actualRankInfo.end;
+  }
+
+  function formatRankInfo(info) {
+    if (!info) return "--";
+    if (info.start === info.end) return String(info.start);
+    return info.start + "\u2013" + info.end;
+  }
+
+  function formatSignedSeconds(diff) {
+    if (diff === null || diff === undefined || isNaN(diff)) return "--";
+    if (diff === 0) return "exact";
+    var sign = diff < 0 ? "\u2212" : "+";
+    return sign + formatSeconds(Math.abs(diff));
+  }
+
   function scorePlayer(player) {
     var actualRanks = computeActualRanks();
     var predRanks = computeRanksForPredictions(player.predictions);
     var perAthlete = {};
     var total = 0;
+    var rankByDisc = {
+      swim: { pts: 0, max: 0 },
+      bike: { pts: 0, max: 0 },
+      run: { pts: 0, max: 0 },
+    };
+    var timeByDisc = {
+      swim: { pts: 0, max: 0 },
+      bike: { pts: 0, max: 0 },
+      run: { pts: 0, max: 0 },
+      transition: { pts: 0, max: 0 },
+    };
 
     ATHLETES.forEach(function (a) {
-      var pred = player.predictions[a];
-      var res = state.results[a];
+      var pred = player.predictions[a] || {};
+      var res = state.results[a] || {};
       var entry = {
-        swimRank: 0,
-        bikeRank: 0,
-        runRank: 0,
-        swimTime: 0,
-        bikeTime: 0,
-        runTime: 0,
-        transition: 0,
+        ranks: {},
+        times: {},
       };
 
       ["swim", "bike", "run"].forEach(function (disc) {
-        var predInfo = predRanks[disc][a];
+        var predInfo = predRanks[disc] ? predRanks[disc][a] : null;
         var predictedRank = predInfo ? predInfo.best : null;
-        var actualInfo = actualRanks[disc][a];
+        var actualInfo = actualRanks[disc] ? actualRanks[disc][a] : null;
+        var eligible = !!actualInfo;
         var pts = rankDiffPoints(predictedRank, actualInfo);
-        entry[disc + "Rank"] = pts;
+        var offBy = rankOffBy(predictedRank, actualInfo);
+        entry.ranks[disc] = {
+          predicted: predictedRank,
+          actual: actualInfo,
+          actualLabel: formatRankInfo(actualInfo),
+          offBy: offBy,
+          pts: pts,
+          max: eligible ? MAX_RANK_PTS : 0,
+        };
+        rankByDisc[disc].pts += pts;
+        if (eligible) rankByDisc[disc].max += MAX_RANK_PTS;
         total += pts;
       });
 
-      if (res) {
-        if (pred.swim !== null && res.swim !== null) {
-          entry.swimTime = timeDiffPoints(
-            pred.swim - res.swim,
-            TIME_POINT_TABLES.swim,
-          );
-          total += entry.swimTime;
-        }
-        if (pred.bike !== null && res.bike !== null) {
-          entry.bikeTime = timeDiffPoints(
-            pred.bike - res.bike,
-            TIME_POINT_TABLES.bike,
-          );
-          total += entry.bikeTime;
-        }
-        if (pred.run !== null && res.run !== null) {
-          entry.runTime = timeDiffPoints(
-            pred.run - res.run,
-            TIME_POINT_TABLES.run,
-          );
-          total += entry.runTime;
-        }
-        var actualTransition = getResultTransition(res);
-        if (pred.transition !== null && actualTransition !== null) {
-          entry.transition = timeDiffPoints(
-            pred.transition - actualTransition,
-            TIME_POINT_TABLES.transition,
-          );
-          total += entry.transition;
-        }
-      }
+      ["swim", "bike", "run"].forEach(function (disc) {
+        var predT = pred[disc] != null ? pred[disc] : null;
+        var actT = res[disc] != null ? res[disc] : null;
+        var eligible = predT !== null && actT !== null;
+        var diff = eligible ? predT - actT : null;
+        var pts = eligible ? timeDiffPoints(diff, TIME_POINT_TABLES[disc]) : 0;
+        entry.times[disc] = {
+          predicted: predT,
+          actual: actT,
+          diff: diff,
+          pts: pts,
+          max: eligible ? MAX_TIME_PTS[disc] : 0,
+        };
+        timeByDisc[disc].pts += pts;
+        if (eligible) timeByDisc[disc].max += MAX_TIME_PTS[disc];
+        total += pts;
+      });
+
+      var predTr = pred.transition != null ? pred.transition : null;
+      var actTr = getResultTransition(res);
+      var trEligible = predTr !== null && actTr !== null;
+      var trDiff = trEligible ? predTr - actTr : null;
+      var trPts = trEligible
+        ? timeDiffPoints(trDiff, TIME_POINT_TABLES.transition)
+        : 0;
+      entry.times.transition = {
+        predicted: predTr,
+        actual: actTr,
+        diff: trDiff,
+        pts: trPts,
+        max: trEligible ? MAX_TIME_PTS.transition : 0,
+      };
+      timeByDisc.transition.pts += trPts;
+      if (trEligible) timeByDisc.transition.max += MAX_TIME_PTS.transition;
+      total += trPts;
 
       perAthlete[a] = entry;
     });
 
-    var wc = { t1: 0, t2: 0 };
     var t1AtRank3 = athletesAtRank(actualRanks.t1, 3);
     var t2AtRank3 = athletesAtRank(actualRanks.t2, 3);
-    if (player.wildcards.t1 && t1AtRank3.indexOf(player.wildcards.t1) !== -1) {
-      wc.t1 = 5;
-      total += 5;
-    }
-    if (player.wildcards.t2 && t2AtRank3.indexOf(player.wildcards.t2) !== -1) {
-      wc.t2 = 5;
-      total += 5;
+    var t1Eligible = t1AtRank3.length > 0;
+    var t2Eligible = t2AtRank3.length > 0;
+    var wc = {
+      t1: {
+        pick: player.wildcards.t1 || null,
+        actual: t1AtRank3,
+        pts:
+          player.wildcards.t1 && t1AtRank3.indexOf(player.wildcards.t1) !== -1
+            ? MAX_WILDCARD_PTS
+            : 0,
+        max: t1Eligible ? MAX_WILDCARD_PTS : 0,
+      },
+      t2: {
+        pick: player.wildcards.t2 || null,
+        actual: t2AtRank3,
+        pts:
+          player.wildcards.t2 && t2AtRank3.indexOf(player.wildcards.t2) !== -1
+            ? MAX_WILDCARD_PTS
+            : 0,
+        max: t2Eligible ? MAX_WILDCARD_PTS : 0,
+      },
+    };
+    total += wc.t1.pts + wc.t2.pts;
+
+    function sumField(obj, field) {
+      return Object.keys(obj).reduce(function (s, k) {
+        return s + obj[k][field];
+      }, 0);
     }
 
-    return { total: total, perAthlete: perAthlete, wildcards: wc };
+    var rankTotal = sumField(rankByDisc, "pts");
+    var rankMax = sumField(rankByDisc, "max");
+    var timeTotal = sumField(timeByDisc, "pts");
+    var timeMax = sumField(timeByDisc, "max");
+    var wildcardTotal = wc.t1.pts + wc.t2.pts;
+    var wildcardMax = wc.t1.max + wc.t2.max;
+
+    return {
+      total: total,
+      max: rankMax + timeMax + wildcardMax,
+      perAthlete: perAthlete,
+      wildcards: wc,
+      categories: {
+        rank: { total: rankTotal, max: rankMax, byDisc: rankByDisc },
+        time: { total: timeTotal, max: timeMax, byDisc: timeByDisc },
+        wildcards: {
+          total: wildcardTotal,
+          max: wildcardMax,
+          t1: wc.t1,
+          t2: wc.t2,
+        },
+      },
+    };
   }
 
   function hasAnyResults() {
@@ -459,29 +1044,45 @@
   }
 
   /* ===================== RENDER: TABS ===================== */
-  var views = ["predictions", "results", "viewpredictions", "leaderboard"];
+  var views = ["predictions", "pool", "race", "info", "compare"];
   var titles = {
-    predictions: "Predictions",
-    results: "Actual Results",
-    viewpredictions: "View Predictions",
-    leaderboard: "Leaderboard",
+    predictions: "Enter Predictions",
+    pool: "Prediction Pool",
+    race: "Race Day",
+    info: "Race Info",
+    compare: "Prediction Detail",
   };
+  var comparePlayerId = null;
+  var currentView = "predictions";
 
   function switchView(name) {
+    currentView = name;
     views.forEach(function (v) {
-      document
-        .getElementById("view-" + v)
-        .classList.toggle("active", v === name);
+      var el = document.getElementById("view-" + v);
+      if (el) el.classList.toggle("active", v === name);
     });
     document.querySelectorAll(".tab-btn").forEach(function (btn) {
-      btn.classList.toggle("active", btn.dataset.view === name);
+      // Compare is a sub-screen of Race — keep Race tab highlighted
+      var active =
+        btn.dataset.view === name ||
+        (name === "compare" && btn.dataset.view === "race");
+      btn.classList.toggle("active", active);
     });
-    document.getElementById("header-title").textContent = titles[name];
+    document.getElementById("header-title").textContent = titles[name] || name;
     document.getElementById("save-results-btn").style.display =
-      name === "results" ? "inline-block" : "none";
-    if (name === "results") renderResults();
-    if (name === "viewpredictions") renderViewPredictions();
-    if (name === "leaderboard") renderLeaderboard();
+      name === "race" ? "inline-block" : "none";
+    var backBtn = document.getElementById("back-from-compare-btn");
+    if (backBtn) {
+      backBtn.style.display = name === "compare" ? "inline-block" : "none";
+    }
+    if (name === "pool") renderViewPredictions();
+    if (name === "race") {
+      renderLeaderboard();
+      renderResults();
+      updateResultsSaveButton();
+    }
+    if (name === "compare") renderPlayerCompare();
+    updateSaveIndicator();
   }
 
   document.querySelectorAll(".tab-btn").forEach(function (btn) {
@@ -489,6 +1090,12 @@
       switchView(btn.dataset.view);
     });
   });
+
+  document
+    .getElementById("back-from-compare-btn")
+    .addEventListener("click", function () {
+      switchView("race");
+    });
 
   /* ===================== RENDER: PREDICTIONS (edits DRAFT) ===================== */
   function refreshPredictionCardState(player, wrap) {
@@ -533,6 +1140,29 @@
     var emptyEl = document.getElementById("players-empty");
     listEl.innerHTML = "";
 
+    var canEdit = isEditor() || !cloudConfigured;
+    var addInput = document.getElementById("new-player-name");
+    var addBtn = document.getElementById("add-player-btn");
+    if (addInput) {
+      addInput.disabled = !canEdit;
+      addInput.placeholder = canEdit
+        ? "Fantasy player name"
+        : "Log in on Race tab to edit";
+    }
+    if (addBtn) addBtn.disabled = !canEdit;
+
+    // Spectator banner on Predict tab
+    var existingBanner = document.getElementById("spectator-banner-predict");
+    if (existingBanner) existingBanner.remove();
+    if (cloudConfigured && !isEditor()) {
+      var ban = document.createElement("div");
+      ban.id = "spectator-banner-predict";
+      ban.className = "spectator-banner";
+      ban.textContent =
+        "Spectator mode — viewing shared data. Log in on the Race tab to edit and publish.";
+      listEl.parentNode.insertBefore(ban, listEl);
+    }
+
     if (state.players.length === 0) {
       emptyEl.style.display = "block";
       updateSaveIndicator();
@@ -568,6 +1198,10 @@
       header
         .querySelector(".delete-player-btn")
         .addEventListener("click", function () {
+          if (!isEditor()) {
+            showToast("Log in as editor to make changes");
+            return;
+          }
           if (
             confirm(
               'Remove fantasy player "' +
@@ -692,6 +1326,10 @@
       "btn-primary save-prediction-btn" + (dirty ? "" : " is-saved");
     saveBtn.textContent = dirty ? "Save Prediction" : "Prediction Saved \u2713";
     saveBtn.addEventListener("click", function () {
+      if (!isEditor()) {
+        showToast("Log in as editor to make changes");
+        return;
+      }
       player.predictions = deepCopy(player.draftPredictions);
       player.wildcards = deepCopy(player.draftWildcards);
       player.hasSavedPrediction = true;
@@ -788,8 +1426,18 @@
     inp.addEventListener("blur", commit);
     inp.addEventListener("change", commit);
     inp.addEventListener("focus", function () {
+      if (!isEditor() && cloudConfigured) {
+        inp.blur();
+        return;
+      }
       inp.select();
     });
+
+    if (!isEditor() && cloudConfigured) {
+      inp.readOnly = true;
+      inp.classList.add("is-readonly");
+      inp.title = "Log in as editor to change times";
+    }
 
     row.appendChild(inp);
     return row;
@@ -837,14 +1485,23 @@
       sel.appendChild(opt);
     });
     sel.addEventListener("change", function () {
+      if (!isEditor() && cloudConfigured) return;
       onChange(sel.value || null);
     });
+    if (!isEditor() && cloudConfigured) {
+      sel.disabled = true;
+      sel.title = "Log in as editor to change";
+    }
     return sel;
   }
 
   document
     .getElementById("add-player-btn")
     .addEventListener("click", function () {
+      if (!isEditor()) {
+        showToast("Log in as editor to make changes");
+        return;
+      }
       var input = document.getElementById("new-player-name");
       var name = input.value.trim();
       if (!name) {
@@ -911,6 +1568,101 @@
     }
   }
 
+  // Ranked official finish lists (mirrors View Predictions order cards)
+  function renderResultsOrders() {
+    var host = document.getElementById("results-orders-wrap");
+    if (!host) return;
+    host.innerHTML = "";
+    if (!hasAnyResults()) return;
+
+    var card = document.createElement("div");
+    card.className = "player-card" + (state._resultsOrdersOpen ? " open" : "");
+
+    var header = document.createElement("div");
+    header.className = "player-header";
+    header.innerHTML =
+      '<div class="title">Official Finishing Order</div>' +
+      '<span class="chevron">\u25B6</span>';
+    header.addEventListener("click", function () {
+      state._resultsOrdersOpen = !state._resultsOrdersOpen;
+      renderResultsOrders();
+    });
+
+    var body = document.createElement("div");
+    body.className = "player-body";
+
+    [
+      { disc: "swim", title: "Swim Order" },
+      { disc: "bike", title: "Bike Order" },
+      { disc: "run", title: "Run Order" },
+      { disc: "transition", title: "Transition Order (T1+T2)" },
+      { disc: "overall", title: "Overall Order" },
+    ].forEach(function (section) {
+      var eventBlock = document.createElement("div");
+      eventBlock.className = "order-event-block";
+      var titleEl = document.createElement("div");
+      titleEl.className = "oe-title";
+      titleEl.textContent = section.title;
+      eventBlock.appendChild(titleEl);
+
+      var ol = document.createElement("ol");
+      ol.className = "order-list";
+      orderedAthletesForResults(section.disc).forEach(function (item) {
+        var li = document.createElement("li");
+        li.innerHTML =
+          '<span class="pos">' +
+          item.rankLabel +
+          "</span><span>" +
+          escapeHtml(item.athlete) +
+          '</span><span class="time">' +
+          formatSeconds(item.time) +
+          "</span>";
+        ol.appendChild(li);
+      });
+      eventBlock.appendChild(ol);
+      body.appendChild(eventBlock);
+    });
+
+    card.appendChild(header);
+    card.appendChild(body);
+    host.appendChild(card);
+  }
+
+  function orderedAthletesForResults(disc) {
+    var ranks = computeActualRanks();
+    var rankMap =
+      disc === "transition"
+        ? computeRanksWithTies(
+            ATHLETES.map(function (a) {
+              return { key: a, time: getResultTransition(state.results[a]) };
+            }),
+          )
+        : ranks[disc] || {};
+
+    var items = ATHLETES.map(function (a) {
+      var t = null;
+      if (disc === "overall") t = getResultTotal(state.results[a]);
+      else if (disc === "transition") t = getResultTransition(state.results[a]);
+      else t = state.results[a] ? state.results[a][disc] : null;
+      return { athlete: a, time: t, info: rankMap[a] };
+    });
+    items.sort(function (a, b) {
+      var at = a.time === null || a.time === undefined ? Infinity : a.time;
+      var bt = b.time === null || b.time === undefined ? Infinity : b.time;
+      return at - bt;
+    });
+    return items.map(function (it) {
+      var rankLabel = "--";
+      if (it.info) {
+        rankLabel =
+          it.info.start === it.info.end
+            ? String(it.info.start)
+            : it.info.start + "-" + it.info.end;
+      }
+      return { athlete: it.athlete, time: it.time, rankLabel: rankLabel };
+    });
+  }
+
   function renderResults() {
     var wrap = document.getElementById("results-athletes");
     wrap.innerHTML = "";
@@ -972,6 +1724,10 @@
             r[field.key] = newVal;
             refreshResultsCardState(athlete, block);
             refreshResultsSummary();
+            renderResultsOrders();
+            renderLeaderboard();
+            updateResultsSaveButton();
+            updateSaveIndicator();
           }),
         );
         block.appendChild(fg);
@@ -981,12 +1737,19 @@
     });
 
     refreshResultsSummary();
+    renderResultsOrders();
+    updateResultsSaveButton();
   }
 
   document
     .getElementById("save-results-btn")
     .addEventListener("click", function () {
+      if (!isEditor()) {
+        showToast("Log in as editor to make changes");
+        return;
+      }
       persistNow();
+      updateResultsSaveButton();
     });
 
   /* ===================== RENDER: VIEW PREDICTIONS TAB ===================== */
@@ -1117,7 +1880,12 @@
     var card = document.createElement("div");
     card.className = "stats-card";
 
-    ATHLETES.forEach(function (athlete) {
+    // Alphabetical athlete order for stats (roster constant order is race/entry order)
+    var athletesAlpha = ATHLETES.slice().sort(function (a, b) {
+      return a.localeCompare(b);
+    });
+
+    athletesAlpha.forEach(function (athlete) {
       var block = document.createElement("div");
       block.className = "stats-athlete-block";
       var nameEl = document.createElement("div");
@@ -1125,66 +1893,17 @@
       nameEl.textContent = athlete;
       block.appendChild(nameEl);
 
-      ["swim", "bike", "run", "transition"].forEach(function (disc) {
-        var vals = saved
-          .map(function (p) {
-            return p.predictions[athlete][disc];
-          })
-          .filter(function (v) {
-            return v !== null;
-          });
-        var avg = vals.length
-          ? vals.reduce(function (s, v) {
-              return s + v;
-            }, 0) / vals.length
-          : null;
+      block.appendChild(statHeaderRow());
+
+      ["swim", "bike", "run", "transition", "overall"].forEach(function (disc) {
+        var avgTime = averagePredictedTime(saved, athlete, disc);
+        var avgRank = averagePredictedRank(saved, athlete, disc);
         block.appendChild(
           statRow(
-            labelFor(disc) + " avg. time",
-            avg === null ? "--" : formatSeconds(avg),
-          ),
-        );
-      });
-
-      var totals = saved
-        .map(function (p) {
-          return getPredictionTotal(p.predictions[athlete]);
-        })
-        .filter(function (v) {
-          return v !== null;
-        });
-      var avgTotal = totals.length
-        ? totals.reduce(function (s, v) {
-            return s + v;
-          }, 0) / totals.length
-        : null;
-      block.appendChild(
-        statRow(
-          "Avg. total time",
-          avgTotal === null ? "--" : formatSeconds(avgTotal),
-        ),
-      );
-
-      ["swim", "bike", "run", "overall"].forEach(function (disc) {
-        var ranks = saved
-          .map(function (p) {
-            var rr = computeRanksForPredictions(p.predictions)[disc][athlete];
-            return rr ? rr.best : null;
-          })
-          .filter(function (v) {
-            return v !== null;
-          });
-        var avgRank = ranks.length
-          ? ranks.reduce(function (s, v) {
-              return s + v;
-            }, 0) / ranks.length
-          : null;
-        block.appendChild(
-          statRow(
-            "Avg. predicted " + labelFor(disc) + " rank",
-            avgRank === null
-              ? "--"
-              : ordinal(Math.round(avgRank)) + " (" + avgRank.toFixed(1) + ")",
+            labelFor(disc),
+            avgRank === null ? "--" : avgRank.toFixed(2),
+            avgTime === null ? "--" : formatSeconds(avgTime),
+            formatSpeed(disc, avgTime),
           ),
         );
       });
@@ -1193,6 +1912,43 @@
     });
 
     wrap.appendChild(card);
+  }
+
+  function averagePredictedTime(saved, athlete, disc) {
+    var vals = saved
+      .map(function (p) {
+        if (disc === "overall") {
+          return getPredictionTotal(p.predictions[athlete]);
+        }
+        return p.predictions[athlete] ? p.predictions[athlete][disc] : null;
+      })
+      .filter(function (v) {
+        return v !== null && v !== undefined && !isNaN(v);
+      });
+    if (!vals.length) return null;
+    return (
+      vals.reduce(function (s, v) {
+        return s + v;
+      }, 0) / vals.length
+    );
+  }
+
+  function averagePredictedRank(saved, athlete, disc) {
+    var ranks = saved
+      .map(function (p) {
+        var rr = computeRanksForPredictions(p.predictions)[disc];
+        if (!rr || !rr[athlete]) return null;
+        return rr[athlete].best;
+      })
+      .filter(function (v) {
+        return v !== null && v !== undefined && !isNaN(v);
+      });
+    if (!ranks.length) return null;
+    return (
+      ranks.reduce(function (s, v) {
+        return s + v;
+      }, 0) / ranks.length
+    );
   }
 
   function labelFor(disc) {
@@ -1204,14 +1960,63 @@
     return disc;
   }
 
-  function statRow(label, value) {
+  // Swim: min/100y · Bike: mph · Run: min/mile (transition/overall: --)
+  function formatSpeed(disc, totalSeconds) {
+    if (
+      totalSeconds === null ||
+      totalSeconds === undefined ||
+      isNaN(totalSeconds) ||
+      totalSeconds <= 0
+    ) {
+      return "--";
+    }
+    if (disc === "swim") {
+      var secPer100 = totalSeconds / (SWIM_YARDS / 100);
+      return formatPace(secPer100) + " / 100y";
+    }
+    if (disc === "bike") {
+      var mph = BIKE_MILES / (totalSeconds / 3600);
+      return mph.toFixed(2) + "mph";
+    }
+    if (disc === "run") {
+      var secPerMile = totalSeconds / RUN_MILES;
+      return formatPace(secPerMile) + " / mile";
+    }
+    return "--";
+  }
+
+  // Seconds → "m:ss" (e.g. 115 → "1:55")
+  function formatPace(totalSeconds) {
+    totalSeconds = Math.max(0, Math.round(totalSeconds));
+    var m = Math.floor(totalSeconds / 60);
+    var s = totalSeconds % 60;
+    return m + ":" + pad(s);
+  }
+
+  function statHeaderRow() {
+    var row = document.createElement("div");
+    row.className = "stat-row stat-row-header";
+    row.innerHTML =
+      '<span class="stat-label"></span>' +
+      '<span class="stat-rank">Rank</span>' +
+      '<span class="stat-time">Time</span>' +
+      '<span class="stat-speed">Speed</span>';
+    return row;
+  }
+
+  // Columns: description | avg rank | time | speed
+  function statRow(label, rankValue, timeValue, speedValue) {
     var row = document.createElement("div");
     row.className = "stat-row";
     row.innerHTML =
       '<span class="stat-label">' +
       escapeHtml(label) +
-      '</span><span class="stat-value">' +
-      escapeHtml(value) +
+      '</span><span class="stat-rank">' +
+      escapeHtml(rankValue) +
+      '</span><span class="stat-time">' +
+      escapeHtml(timeValue) +
+      '</span><span class="stat-speed">' +
+      escapeHtml(speedValue == null ? "--" : speedValue) +
       "</span>";
     return row;
   }
@@ -1235,39 +2040,48 @@
       });
 
       scored.forEach(function (entry, idx) {
+        var open = !!entry.player._lbOpen;
         var row = document.createElement("div");
-        row.className = "lb-row";
-        row.style.flexDirection = "column";
-        row.style.alignItems = "stretch";
-        row.style.cursor = "pointer";
+        row.className = "lb-row" + (open ? " open" : "");
 
+        var cat = entry.score.categories;
         var top = document.createElement("div");
-        top.style.display = "flex";
-        top.style.alignItems = "center";
-        top.style.gap = "12px";
+        top.className = "lb-row-top";
         top.innerHTML =
           '<div class="lb-rank">' +
           (idx + 1) +
           "</div>" +
           '<div class="lb-main"><div class="lb-name">' +
           escapeHtml(entry.player.name) +
-          "</div>" +
-          '<div class="lb-sub">Tap for point breakdown</div></div>' +
-          '<div class="lb-points">' +
+          '</div><div class="lb-sub">' +
+          "Rank: " +
+          cat.rank.total +
+          " / " +
+          cat.rank.max +
+          " · Time: " +
+          cat.time.total +
+          " / " +
+          cat.time.max +
+          " · WC: " +
+          cat.wildcards.total +
+          " / " +
+          cat.wildcards.max +
+          '</div></div><div class="lb-points">' +
           entry.score.total +
-          '<span class="lbl">pts</span></div>';
+          '<span class="lbl">pts</span></div>' +
+          '<span class="chevron lb-chevron">\u25B6</span>';
 
         var detail = document.createElement("div");
         detail.className = "breakdown";
-        detail.style.display = "none";
+        detail.style.display = open ? "block" : "none";
         detail.appendChild(buildBreakdown(entry.player, entry.score));
 
         row.appendChild(top);
         row.appendChild(detail);
 
-        row.addEventListener("click", function () {
-          detail.style.display =
-            detail.style.display === "none" ? "block" : "none";
+        top.addEventListener("click", function () {
+          entry.player._lbOpen = !entry.player._lbOpen;
+          renderLeaderboard();
         });
 
         listEl.appendChild(row);
@@ -1277,59 +2091,324 @@
     renderAthleteVsAverage();
   }
 
+  // Category breakdown: ranking → time accuracy → wildcards (not by athlete)
   function buildBreakdown(player, score) {
     var wrap = document.createElement("div");
+    var cat = score.categories;
 
-    ATHLETES.forEach(function (athlete) {
-      var e = score.perAthlete[athlete];
-      var block = document.createElement("div");
-      block.className = "breakdown-athlete";
-      block.innerHTML =
-        '<div class="ba-name">' + escapeHtml(athlete) + "</div>";
+    wrap.appendChild(
+      breakdownCategory("Ranking", cat.rank.total, cat.rank.max, [
+        {
+          label: "Swim rank",
+          pts: cat.rank.byDisc.swim.pts,
+          max: cat.rank.byDisc.swim.max,
+        },
+        {
+          label: "Bike rank",
+          pts: cat.rank.byDisc.bike.pts,
+          max: cat.rank.byDisc.bike.max,
+        },
+        {
+          label: "Run rank",
+          pts: cat.rank.byDisc.run.pts,
+          max: cat.rank.byDisc.run.max,
+        },
+      ]),
+    );
 
-      var row = document.createElement("div");
-      row.className = "chip-row";
-      [
-        { label: "Swim Rank", pts: e.swimRank, max: 5 },
-        { label: "Bike Rank", pts: e.bikeRank, max: 5 },
-        { label: "Run Rank", pts: e.runRank, max: 5 },
-        { label: "Swim Time", pts: e.swimTime, max: 10 },
-        { label: "Bike Time", pts: e.bikeTime, max: 10 },
-        { label: "Run Time", pts: e.runTime, max: 10 },
-        { label: "Transition", pts: e.transition, max: 4 },
-      ].forEach(function (c) {
-        var chip = document.createElement("span");
-        var cls = "chip";
-        if (c.pts === 0) cls += " pts-zero";
-        else if (c.pts >= c.max) cls += " pts-high";
-        else cls += " pts-mid";
-        chip.className = cls;
-        chip.textContent = c.label + " +" + c.pts;
-        row.appendChild(chip);
-      });
-      block.appendChild(row);
-      wrap.appendChild(block);
+    wrap.appendChild(
+      breakdownCategory("Time accuracy", cat.time.total, cat.time.max, [
+        {
+          label: "Swim",
+          pts: cat.time.byDisc.swim.pts,
+          max: cat.time.byDisc.swim.max,
+        },
+        {
+          label: "Bike",
+          pts: cat.time.byDisc.bike.pts,
+          max: cat.time.byDisc.bike.max,
+        },
+        {
+          label: "Run",
+          pts: cat.time.byDisc.run.pts,
+          max: cat.time.byDisc.run.max,
+        },
+        {
+          label: "Transition (T1+T2)",
+          pts: cat.time.byDisc.transition.pts,
+          max: cat.time.byDisc.transition.max,
+        },
+      ]),
+    );
+
+    wrap.appendChild(
+      breakdownCategory("Wildcards", cat.wildcards.total, cat.wildcards.max, [
+        {
+          label: "3rd-fastest T1",
+          pts: cat.wildcards.t1.pts,
+          max: cat.wildcards.t1.max,
+        },
+        {
+          label: "3rd-fastest T2",
+          pts: cat.wildcards.t2.pts,
+          max: cat.wildcards.t2.max,
+        },
+      ]),
+    );
+
+    var detailBtn = document.createElement("button");
+    detailBtn.type = "button";
+    detailBtn.className = "btn-secondary btn-block bd-detail-btn";
+    detailBtn.textContent = "Full comparison vs actual results";
+    detailBtn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      openPlayerCompare(player.id);
     });
-
-    var wcBlock = document.createElement("div");
-    wcBlock.className = "breakdown-athlete";
-    wcBlock.innerHTML = '<div class="ba-name">Wildcards</div>';
-    var wcRow = document.createElement("div");
-    wcRow.className = "chip-row";
-    var t1Chip = document.createElement("span");
-    t1Chip.className =
-      "chip " + (score.wildcards.t1 > 0 ? "pts-high" : "pts-zero");
-    t1Chip.textContent = "3rd T1 +" + score.wildcards.t1;
-    var t2Chip = document.createElement("span");
-    t2Chip.className =
-      "chip " + (score.wildcards.t2 > 0 ? "pts-high" : "pts-zero");
-    t2Chip.textContent = "3rd T2 +" + score.wildcards.t2;
-    wcRow.appendChild(t1Chip);
-    wcRow.appendChild(t2Chip);
-    wcBlock.appendChild(wcRow);
-    wrap.appendChild(wcBlock);
+    wrap.appendChild(detailBtn);
 
     return wrap;
+  }
+
+  function breakdownCategory(title, totalPts, maxPts, lines) {
+    var block = document.createElement("div");
+    block.className = "bd-category";
+
+    var head = document.createElement("div");
+    head.className = "bd-category-head";
+    head.innerHTML =
+      '<span class="bd-category-title">' +
+      escapeHtml(title) +
+      '</span><span class="bd-category-total">' +
+      totalPts +
+      ' <span class="bd-max">/ ' +
+      maxPts +
+      " max</span></span>";
+    block.appendChild(head);
+
+    var table = document.createElement("div");
+    table.className = "bd-lines";
+    lines.forEach(function (line) {
+      var row = document.createElement("div");
+      row.className = "bd-line";
+      var pillClass = "pts-pill";
+      if (line.max === 0) pillClass += " pts-pill-zero";
+      else if (line.pts <= 0) pillClass += " pts-pill-zero";
+      else if (line.pts >= line.max) pillClass += " pts-pill-high";
+      else pillClass += " pts-pill-mid";
+      row.innerHTML =
+        '<span class="bd-line-label">' +
+        escapeHtml(line.label) +
+        '</span><span class="' +
+        pillClass +
+        '">' +
+        line.pts +
+        "/" +
+        line.max +
+        "</span>";
+      table.appendChild(row);
+    });
+    block.appendChild(table);
+    return block;
+  }
+
+  function openPlayerCompare(playerId) {
+    comparePlayerId = playerId;
+    switchView("compare");
+  }
+
+  function renderPlayerCompare() {
+    var host = document.getElementById("compare-detail");
+    if (!host) return;
+    host.innerHTML = "";
+
+    var player = state.players.filter(function (p) {
+      return p.id === comparePlayerId;
+    })[0];
+    if (!player) {
+      host.innerHTML =
+        '<div class="empty-state"><div>Player not found.</div></div>';
+      return;
+    }
+
+    var score = scorePlayer(player);
+    var cat = score.categories;
+
+    var summary = document.createElement("div");
+    summary.className = "compare-summary card";
+    summary.innerHTML =
+      '<div class="compare-player-name">' +
+      escapeHtml(player.name) +
+      "</div>" +
+      '<div class="compare-total">' +
+      score.total +
+      ' <span class="bd-max">/ ' +
+      score.max +
+      " max pts</span></div>" +
+      '<div class="compare-cat-row">' +
+      '<div class="compare-cat"><span class="compare-cat-lbl">Ranking</span><span class="compare-cat-val">' +
+      cat.rank.total +
+      "/" +
+      cat.rank.max +
+      "</span></div>" +
+      '<div class="compare-cat"><span class="compare-cat-lbl">Time</span><span class="compare-cat-val">' +
+      cat.time.total +
+      "/" +
+      cat.time.max +
+      "</span></div>" +
+      '<div class="compare-cat"><span class="compare-cat-lbl">Wildcards</span><span class="compare-cat-val">' +
+      cat.wildcards.total +
+      "/" +
+      cat.wildcards.max +
+      "</span></div></div>" +
+      '<p class="helper-text" style="margin-top:10px;margin-bottom:0">Max is based on results entered so far (slots that can score).</p>';
+    host.appendChild(summary);
+
+    // Wildcards card
+    var wcCard = document.createElement("div");
+    wcCard.className = "compare-block";
+    wcCard.innerHTML =
+      '<div class="section-title" style="margin-top:0">Wildcards</div>';
+    ["t1", "t2"].forEach(function (key) {
+      var w = score.wildcards[key];
+      var actualLabel = w.actual.length
+        ? w.actual.map(escapeHtml).join(" / ")
+        : "— (not determined yet)";
+      var row = document.createElement("div");
+      row.className = "compare-metric";
+      row.innerHTML =
+        '<div class="compare-metric-title">3rd-fastest ' +
+        key.toUpperCase() +
+        ' <span class="pts-pill ' +
+        (w.pts > 0 ? "pts-pill-high" : "pts-pill-zero") +
+        '">' +
+        w.pts +
+        "/" +
+        w.max +
+        "</span></div>" +
+        '<div class="compare-metric-grid">' +
+        '<div><span class="cm-k">Your pick</span><span class="cm-v">' +
+        (w.pick ? escapeHtml(w.pick) : "—") +
+        "</span></div>" +
+        '<div><span class="cm-k">Actual 3rd</span><span class="cm-v">' +
+        actualLabel +
+        "</span></div></div>";
+      wcCard.appendChild(row);
+    });
+    host.appendChild(wcCard);
+
+    var athletesTitle = document.createElement("div");
+    athletesTitle.className = "section-title";
+    athletesTitle.textContent = "Per athlete";
+    host.appendChild(athletesTitle);
+
+    ATHLETES.forEach(function (athlete, idx) {
+      var entry = score.perAthlete[athlete];
+      var card = document.createElement("div");
+      card.className =
+        "compare-athlete-card" + (idx % 2 === 0 ? " stripe-a" : " stripe-b");
+
+      var aHead = document.createElement("div");
+      aHead.className = "compare-athlete-name";
+      aHead.textContent = athlete;
+      card.appendChild(aHead);
+
+      ["swim", "bike", "run"].forEach(function (disc) {
+        card.appendChild(
+          buildRankCompareRow(labelFor(disc) + " rank", entry.ranks[disc]),
+        );
+        card.appendChild(
+          buildTimeCompareRow(labelFor(disc) + " time", entry.times[disc]),
+        );
+      });
+      card.appendChild(
+        buildTimeCompareRow("Transition (T1+T2)", entry.times.transition),
+      );
+
+      host.appendChild(card);
+    });
+  }
+
+  function buildRankCompareRow(title, d) {
+    var row = document.createElement("div");
+    row.className = "compare-metric";
+    var offLabel = "--";
+    if (d.offBy === 0) offLabel = "Exact";
+    else if (d.offBy !== null && d.offBy !== undefined)
+      offLabel = "Off by " + d.offBy;
+    else if (d.max === 0) offLabel = "No result yet";
+
+    var pillClass = "pts-pill";
+    if (d.max === 0 || d.pts <= 0) pillClass += " pts-pill-zero";
+    else if (d.pts >= d.max) pillClass += " pts-pill-high";
+    else pillClass += " pts-pill-mid";
+
+    row.innerHTML =
+      '<div class="compare-metric-title">' +
+      escapeHtml(title) +
+      ' <span class="' +
+      pillClass +
+      '">' +
+      d.pts +
+      "/" +
+      d.max +
+      "</span></div>" +
+      '<div class="compare-metric-grid">' +
+      '<div><span class="cm-k">Predicted</span><span class="cm-v">' +
+      (d.predicted != null ? ordinal(d.predicted) : "—") +
+      "</span></div>" +
+      '<div><span class="cm-k">Actual</span><span class="cm-v">' +
+      (d.actualLabel || "—") +
+      "</span></div>" +
+      '<div><span class="cm-k">Error</span><span class="cm-v">' +
+      offLabel +
+      "</span></div></div>";
+    return row;
+  }
+
+  function buildTimeCompareRow(title, d) {
+    var row = document.createElement("div");
+    row.className = "compare-metric";
+    var errLabel =
+      d.max === 0
+        ? d.predicted == null && d.actual == null
+          ? "No data"
+          : d.actual == null
+            ? "No result yet"
+            : "No prediction"
+        : formatSignedSeconds(d.diff);
+    // Positive diff = prediction slower than actual
+    if (d.diff !== null && d.diff !== 0 && d.max > 0) {
+      errLabel =
+        (d.diff < 0 ? "Faster by " : "Slower by ") +
+        formatSeconds(Math.abs(d.diff));
+    }
+
+    var pillClass = "pts-pill";
+    if (d.max === 0 || d.pts <= 0) pillClass += " pts-pill-zero";
+    else if (d.pts >= d.max) pillClass += " pts-pill-high";
+    else pillClass += " pts-pill-mid";
+
+    row.innerHTML =
+      '<div class="compare-metric-title">' +
+      escapeHtml(title) +
+      ' <span class="' +
+      pillClass +
+      '">' +
+      d.pts +
+      "/" +
+      d.max +
+      "</span></div>" +
+      '<div class="compare-metric-grid">' +
+      '<div><span class="cm-k">Predicted</span><span class="cm-v mono">' +
+      formatSeconds(d.predicted) +
+      "</span></div>" +
+      '<div><span class="cm-k">Actual</span><span class="cm-v mono">' +
+      formatSeconds(d.actual) +
+      "</span></div>" +
+      '<div><span class="cm-k">Error</span><span class="cm-v">' +
+      errLabel +
+      "</span></div></div>";
+    return row;
   }
 
   // Shows, per athlete: their actual event times/ranks vs. the average of what
@@ -1441,10 +2520,120 @@
     });
   }
 
-  /* ===================== CLEAR DATA ===================== */
+  /* ===================== EXPORT / IMPORT / CLEAR ===================== */
+  function downloadBackup() {
+    try {
+      var payload = {
+        app: "FantasyTriathlon",
+        version: 2,
+        exportedAt: new Date().toISOString(),
+        athletes: ATHLETES.slice(),
+        state: state,
+      };
+      var blob = new Blob([JSON.stringify(payload, null, 2)], {
+        type: "application/json",
+      });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement("a");
+      var d = new Date();
+      var dateStr =
+        d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
+      a.href = url;
+      a.download = "fantasy-triathlon-backup-" + dateStr + ".json";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      showToast("Backup exported");
+    } catch (e) {
+      console.error("Export failed", e);
+      showToast("Export failed");
+    }
+  }
+
+  function isValidBackupState(obj) {
+    if (!obj || typeof obj !== "object") return false;
+    // Accept either wrapped export { state: {...} } or raw state { players, results }
+    var s = obj.state && typeof obj.state === "object" ? obj.state : obj;
+    if (!Array.isArray(s.players)) return false;
+    if (!s.results || typeof s.results !== "object") return false;
+    return true;
+  }
+
+  function importBackupFromFile(file) {
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function () {
+      try {
+        var parsed = JSON.parse(reader.result);
+        if (!isValidBackupState(parsed)) {
+          showToast("Invalid backup file");
+          return;
+        }
+        var incoming =
+          parsed.state && typeof parsed.state === "object"
+            ? parsed.state
+            : parsed;
+        state = normalizeState(deepCopy(incoming));
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+        captureResultsSnapshot();
+        renderPlayers();
+        renderResults();
+        renderViewPredictions();
+        renderLeaderboard();
+        updateResultsSaveButton();
+        updateSaveIndicator();
+        if (isEditor()) scheduleCloudPublish(false);
+        showToast("Backup imported");
+      } catch (e) {
+        console.error("Import failed", e);
+        showToast("Import failed");
+      }
+    };
+    reader.onerror = function () {
+      showToast("Import failed");
+    };
+    reader.readAsText(file);
+  }
+
+  document
+    .getElementById("export-data-btn")
+    .addEventListener("click", function () {
+      downloadBackup();
+    });
+
+  document
+    .getElementById("import-data-btn")
+    .addEventListener("click", function () {
+      if (!isEditor()) {
+        showToast("Log in as editor to import");
+        return;
+      }
+      if (
+        !confirm(
+          "Import will replace ALL current players, predictions, and results on this device with the backup file. Continue?",
+        )
+      ) {
+        return;
+      }
+      document.getElementById("import-file-input").click();
+    });
+
+  document
+    .getElementById("import-file-input")
+    .addEventListener("change", function (e) {
+      var file = e.target.files && e.target.files[0];
+      e.target.value = "";
+      importBackupFromFile(file);
+    });
+
   document
     .getElementById("clear-data-btn")
     .addEventListener("click", function () {
+      if (!isEditor()) {
+        showToast("Log in as editor to clear data");
+        return;
+      }
       if (
         confirm(
           "This will permanently delete ALL fantasy players, predictions, and results. This cannot be undone. Continue?",
@@ -1453,10 +2642,15 @@
         if (confirm("Are you absolutely sure? All data will be lost.")) {
           localStorage.removeItem(STORAGE_KEY);
           state = defaultState();
+          captureResultsSnapshot();
           renderPlayers();
           renderResults();
           renderViewPredictions();
           renderLeaderboard();
+          updateResultsSaveButton();
+          updateSaveIndicator();
+          // Publish empty state so spectators clear too
+          pushCloudState({ silent: true });
           showToast("All data cleared");
         }
       }
@@ -1476,6 +2670,11 @@
   }
 
   /* ===================== INIT ===================== */
+  wireCloudUI();
   renderPlayers();
+  updateResultsSaveButton();
+  updateSaveIndicator();
   switchView("predictions");
+  // Pull shared state after first paint
+  initCloud();
 })();

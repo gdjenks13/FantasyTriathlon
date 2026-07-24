@@ -1,98 +1,410 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Fantasy Triathlon</title>
-<link rel="stylesheet" href="styles.css">
-</head>
-<body>
-
-<div class="app-header">
-  <div class="header-top-row">
-    <div>
-      <div class="eyebrow">Race Day Fantasy</div>
-      <h1 id="header-title">Predictions</h1>
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+    />
+    <title>Fantasy Triathlon</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app-header">
+      <div class="header-top-row">
+        <div>
+          <div class="eyebrow">Fantasy Triathlon</div>
+          <h1 id="header-title">Predict</h1>
+          <div class="race-distances">
+            Aug 8, 2026 · Deer Creek · 1.5k / 25.6mi / 10k
+          </div>
+        </div>
+        <button
+          class="btn-header-action btn-header-back"
+          id="back-from-compare-btn"
+          type="button"
+          style="display: none"
+        >
+          ← Back
+        </button>
+        <button
+          class="btn-header-action is-saved"
+          id="save-results-btn"
+          style="display: none"
+        >
+          Results Saved ✓
+        </button>
+      </div>
+      <div class="save-indicator" id="save-indicator">All changes saved</div>
+      <div class="cloud-status" id="cloud-status">Cloud: connecting…</div>
     </div>
-    <button class="btn-header-action" id="save-results-btn" style="display:none;">Save Results</button>
-  </div>
-  <div class="save-indicator" id="save-indicator">All changes saved</div>
-</div>
 
-<!-- ============ PREDICTIONS VIEW ============ -->
-<div class="view active" id="view-predictions">
+    <!-- ============ 1. PREDICT ============ -->
+    <div class="view active" id="view-predictions">
+      <div class="add-player-row">
+        <input
+          type="text"
+          id="new-player-name"
+          placeholder="Fantasy player name"
+          maxlength="40"
+        />
+        <button class="btn-primary" style="width: auto" id="add-player-btn">
+          Add
+        </button>
+      </div>
 
-  <div class="add-player-row">
-    <input type="text" id="new-player-name" placeholder="Fantasy player name" maxlength="40">
-    <button class="btn-primary" style="width:auto;" id="add-player-btn">Add</button>
-  </div>
+      <div id="players-list"></div>
 
-  <div id="players-list"></div>
+      <div class="empty-state" id="players-empty" style="display: none">
+        <div class="big">&#127937;</div>
+        <div>
+          No fantasy players yet.<br />Add one above to start predicting.
+        </div>
+      </div>
+    </div>
 
-  <div class="empty-state" id="players-empty" style="display:none;">
-    <div class="big">&#127937;</div>
-    <div>No fantasy players yet.<br>Add one above to start predicting.</div>
-  </div>
-</div>
+    <!-- ============ 2. POOL (view predictions + stats) ============ -->
+    <div class="view" id="view-pool">
+      <div class="section-title" style="margin-top: 6px">
+        Everyone's Predictions
+      </div>
+      <div id="view-predictions-list"></div>
+      <div
+        class="empty-state"
+        id="view-predictions-empty"
+        style="display: none"
+      >
+        <div class="big">&#128203;</div>
+        <div>
+          No saved predictions yet.<br />Save a prediction from the Predict tab.
+        </div>
+      </div>
 
-<!-- ============ RESULTS VIEW ============ -->
-<div class="view" id="view-results">
-  <div class="card">
-    <div class="section-title" style="margin-top:0;">Official Race Results</div>
-    <div id="results-athletes"></div>
-  </div>
+      <div id="prediction-stats-wrap"></div>
+    </div>
 
-  <div class="card" id="results-summary-card" style="display:none;">
-    <div class="section-title" style="margin-top:0;">Computed Summary</div>
-    <div id="results-summary"></div>
-  </div>
-</div>
+    <!-- ============ 3. RACE (fantasy first, then official) ============ -->
+    <div class="view" id="view-race">
+      <div class="section-title" style="margin-top: 6px">Fantasy Standings</div>
+      <div id="leaderboard-list"></div>
+      <div class="empty-state" id="leaderboard-empty" style="display: none">
+        <div class="big">&#127942;</div>
+        <div>Add players and enter results to see fantasy standings.</div>
+      </div>
 
-<!-- ============ VIEW PREDICTIONS TAB ============ -->
-<div class="view" id="view-viewpredictions">
-  <div class="section-title" style="margin-top:6px;">Everyone's Predictions</div>
-  <div id="view-predictions-list"></div>
-  <div class="empty-state" id="view-predictions-empty" style="display:none;">
-    <div class="big">&#128203;</div>
-    <div>No saved predictions yet.<br>Save a prediction from the Predictions tab.</div>
-  </div>
+      <div id="athlete-vs-average-wrap"></div>
 
-  <div id="prediction-stats-wrap"></div>
-</div>
+      <div class="section-title">Official Race Results</div>
+      <div class="card">
+        <div id="results-athletes"></div>
+      </div>
 
-<!-- ============ LEADERBOARD VIEW ============ -->
-<div class="view" id="view-leaderboard">
-  <div id="leaderboard-list"></div>
-  <div class="empty-state" id="leaderboard-empty" style="display:none;">
-    <div class="big">&#127942;</div>
-    <div>Add players and enter results to see the leaderboard.</div>
-  </div>
+      <div class="card" id="results-summary-card" style="display: none">
+        <div class="section-title" style="margin-top: 0">
+          3rd Fastest Transitions
+        </div>
+        <div id="results-summary"></div>
+      </div>
 
-  <div id="athlete-vs-average-wrap"></div>
+      <div id="results-orders-wrap"></div>
 
-  <div class="footer-actions" id="clear-data-wrap">
-    <hr class="divider">
-    <button class="btn-danger" id="clear-data-btn">Clear All Data</button>
-  </div>
-</div>
+      <div class="footer-actions" id="data-tools-wrap">
+        <hr class="divider" />
 
-<div class="tab-bar">
-  <button class="tab-btn active" data-view="predictions">
-    <span class="tab-icon">&#128221;</span>Predict
-  </button>
-  <button class="tab-btn" data-view="results">
-    <span class="tab-icon">&#127937;</span>Results
-  </button>
-  <button class="tab-btn" data-view="viewpredictions">
-    <span class="tab-icon">&#128203;</span>View
-  </button>
-  <button class="tab-btn" data-view="leaderboard">
-    <span class="tab-icon">&#127942;</span>Leaders
-  </button>
-</div>
+        <div class="section-title" style="margin-top: 0">Shared cloud data</div>
+        <div class="card cloud-card" id="cloud-panel">
+          <p class="helper-text" id="cloud-mode-hint" style="margin-top: 0">
+            Spectators see live data automatically. Log in as editor to publish
+            changes for everyone.
+          </p>
 
-<div class="toast" id="toast">Saved</div>
+          <div id="cloud-login-form">
+            <div class="field-group">
+              <label for="cloud-email">Editor email</label>
+              <input type="email" id="cloud-email" autocomplete="username" />
+            </div>
+            <div class="field-group">
+              <label for="cloud-password">Password</label>
+              <input
+                type="password"
+                id="cloud-password"
+                autocomplete="current-password"
+              />
+            </div>
+            <button class="btn-primary" type="button" id="cloud-login-btn">
+              Log in to publish
+            </button>
+            <p class="helper-text" id="cloud-login-error" style="display: none"></p>
+          </div>
 
-<script src="app.js"></script>
-</body>
+          <div id="cloud-editor-bar" style="display: none">
+            <p class="cloud-editor-line">
+              Signed in as <strong id="cloud-user-email"></strong>
+            </p>
+            <div class="backup-row">
+              <button class="btn-primary" type="button" id="cloud-publish-btn">
+                Publish to cloud
+              </button>
+              <button class="btn-secondary" type="button" id="cloud-logout-btn">
+                Log out
+              </button>
+            </div>
+            <p class="helper-text">
+              While logged in, saves also publish automatically so spectators
+              update within a few seconds.
+            </p>
+          </div>
+        </div>
+
+        <div class="backup-row" style="margin-top: 14px">
+          <button class="btn-secondary" id="export-data-btn" type="button">
+            Export backup
+          </button>
+          <button class="btn-secondary" id="import-data-btn" type="button">
+            Import backup
+          </button>
+          <input
+            type="file"
+            id="import-file-input"
+            accept="application/json,.json"
+            style="display: none"
+          />
+        </div>
+        <p class="helper-text">
+          Export a JSON backup before race day. Import restores players,
+          predictions, and results on this device (publish separately when
+          logged in).
+        </p>
+        <button class="btn-danger" id="clear-data-btn" type="button">
+          Clear All Data
+        </button>
+      </div>
+    </div>
+
+    <!-- ============ COMPARE (sub-screen of Race; no tab bar item) ============ -->
+    <div class="view" id="view-compare">
+      <div id="compare-detail"></div>
+    </div>
+
+    <!-- ============ 4. INFO ============ -->
+    <div class="view" id="view-info">
+      <div class="info-card">
+        <div class="section-title" style="margin-top: 0">This Race</div>
+        <p class="info-lead">
+          <strong>Saturday, August 8, 2026</strong><br />
+          Deer Creek State Park<br />
+          New Holland, Ohio
+        </p>
+        <div class="info-row">
+          <span class="info-k">Swim</span>
+          <span class="info-v">1,500 m / 1,640.42 yd · 0 ft elevation</span>
+        </div>
+        <div class="info-row">
+          <span class="info-k">Bike</span>
+          <span class="info-v">41.2 km / 25.6 mi · ~700 ft elevation</span>
+        </div>
+        <div class="info-row">
+          <span class="info-k">Run</span>
+          <span class="info-v">10 km / 6.2 mi · ~80 ft elevation</span>
+        </div>
+      </div>
+
+      <div class="info-card">
+        <div class="section-title" style="margin-top: 0">
+          What is a triathlon?
+        </div>
+        <p class="info-body">
+          Three-discipline race with a swim, bike, and run. Between disciplines,
+          athletes change gear in the
+          <strong>transition area</strong>:
+        </p>
+        <ul class="info-list">
+          <li>
+            <strong>T1</strong> — swim-to-bike (swim stuff off, bike stuff on)
+          </li>
+          <li>
+            <strong>T2</strong> — bike-to-run (bike stuff off, run stuff on)
+          </li>
+        </ul>
+        <p class="info-body">
+          A standard <strong>Olympic-distance</strong> triathlon is usually
+          <strong>1.5 km swim · 40 km bike · 10 km run</strong>. This event has
+          a slightly longer bike course than is traditional.
+        </p>
+        <p class="info-body">
+          Overall place is by total time: swim + T1 + bike + T2 + run. Results
+          will be available
+          <a
+            href="https://www.columbustriathlon.com/Race/Results/Overview/145828"
+            target="_blank"
+            rel="noopener noreferrer"
+            >here</a
+          >.
+        </p>
+      </div>
+
+      <div class="info-card">
+        <div class="section-title" style="margin-top: 0">
+          Fantasy Triathlon Scoring
+        </div>
+        <p class="info-body">
+          Each player predicts per-discipline times for every athlete, plus two
+          wildcards. Only <strong>saved</strong> predictions count.
+        </p>
+
+        <!-- Rank accuracy -->
+        <div class="score-block">
+          <div class="score-block-title">Rank accuracy</div>
+          <p class="score-block-sub">Swim, bike, and run — per athlete</p>
+          <table class="score-table">
+            <thead>
+              <tr>
+                <th scope="col">How close</th>
+                <th scope="col" class="score-pts-col">Points</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Exact rank</td>
+                <td class="score-pts-col"><span class="pts-pill pts-pill-high">5</span></td>
+              </tr>
+              <tr>
+                <td>Off by 1 place</td>
+                <td class="score-pts-col"><span class="pts-pill pts-pill-mid">3</span></td>
+              </tr>
+              <tr>
+                <td>Off by 2 places</td>
+                <td class="score-pts-col"><span class="pts-pill pts-pill-low">1</span></td>
+              </tr>
+              <tr>
+                <td>Off by 3+ places</td>
+                <td class="score-pts-col"><span class="pts-pill pts-pill-zero">0</span></td>
+              </tr>
+            </tbody>
+          </table>
+          <p class="score-footnote">Ties use rank ranges (e.g. 2–3 both count as a hit).</p>
+        </div>
+
+        <!-- Time accuracy -->
+        <div class="score-block">
+          <div class="score-block-title">Time accuracy</div>
+          <p class="score-block-sub">
+            Points by how close your predicted time is (absolute error)
+          </p>
+
+          <div class="time-score-grid">
+            <div class="time-score-card">
+              <div class="time-score-head">Swim &amp; Run</div>
+              <table class="score-table score-table-compact">
+                <thead>
+                  <tr>
+                    <th scope="col">Within</th>
+                    <th scope="col" class="score-pts-col">Pts</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr><td>≤ 30 sec</td><td class="score-pts-col"><span class="pts-pill pts-pill-high">10</span></td></tr>
+                  <tr><td>≤ 1 min</td><td class="score-pts-col"><span class="pts-pill pts-pill-high">8</span></td></tr>
+                  <tr><td>≤ 3 min</td><td class="score-pts-col"><span class="pts-pill pts-pill-mid">6</span></td></tr>
+                  <tr><td>≤ 5 min</td><td class="score-pts-col"><span class="pts-pill pts-pill-mid">4</span></td></tr>
+                  <tr><td>≤ 10 min</td><td class="score-pts-col"><span class="pts-pill pts-pill-low">2</span></td></tr>
+                  <tr><td>Over 10 min</td><td class="score-pts-col"><span class="pts-pill pts-pill-zero">0</span></td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div class="time-score-card">
+              <div class="time-score-head">Bike</div>
+              <table class="score-table score-table-compact">
+                <thead>
+                  <tr>
+                    <th scope="col">Within</th>
+                    <th scope="col" class="score-pts-col">Pts</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr><td>≤ 30 sec</td><td class="score-pts-col"><span class="pts-pill pts-pill-high">10</span></td></tr>
+                  <tr><td>≤ 2 min</td><td class="score-pts-col"><span class="pts-pill pts-pill-high">8</span></td></tr>
+                  <tr><td>≤ 5 min</td><td class="score-pts-col"><span class="pts-pill pts-pill-mid">6</span></td></tr>
+                  <tr><td>≤ 10 min</td><td class="score-pts-col"><span class="pts-pill pts-pill-mid">4</span></td></tr>
+                  <tr><td>≤ 15 min</td><td class="score-pts-col"><span class="pts-pill pts-pill-low">2</span></td></tr>
+                  <tr><td>Over 15 min</td><td class="score-pts-col"><span class="pts-pill pts-pill-zero">0</span></td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div class="time-score-card">
+              <div class="time-score-head">Transition</div>
+              <p class="time-score-note">T1 + T2 combined</p>
+              <table class="score-table score-table-compact">
+                <thead>
+                  <tr>
+                    <th scope="col">Within</th>
+                    <th scope="col" class="score-pts-col">Pts</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr><td>≤ 30 sec</td><td class="score-pts-col"><span class="pts-pill pts-pill-high">4</span></td></tr>
+                  <tr><td>≤ 2 min</td><td class="score-pts-col"><span class="pts-pill pts-pill-mid">2</span></td></tr>
+                  <tr><td>≤ 4 min</td><td class="score-pts-col"><span class="pts-pill pts-pill-low">1</span></td></tr>
+                  <tr><td>Over 4 min</td><td class="score-pts-col"><span class="pts-pill pts-pill-zero">0</span></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- Wildcards -->
+        <div class="score-block">
+          <div class="score-block-title">Wildcards</div>
+          <p class="score-block-sub">One pick each — bonus if correct</p>
+          <table class="score-table">
+            <thead>
+              <tr>
+                <th scope="col">Pick</th>
+                <th scope="col" class="score-pts-col">Points</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>3rd-fastest <strong>T1</strong></td>
+                <td class="score-pts-col"><span class="pts-pill pts-pill-high">+5</span></td>
+              </tr>
+              <tr>
+                <td>3rd-fastest <strong>T2</strong></td>
+                <td class="score-pts-col"><span class="pts-pill pts-pill-high">+5</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p class="rules-note">
+          Highest total fantasy points wins. See the <strong>Race</strong> tab for
+          live standings once official times are entered.
+        </p>
+      </div>
+    </div>
+
+    <div class="tab-bar">
+      <button class="tab-btn active" data-view="predictions">
+        <span class="tab-icon">&#128221;</span>Predict
+      </button>
+      <button class="tab-btn" data-view="pool">
+        <span class="tab-icon">&#128203;</span>Pool
+      </button>
+      <button class="tab-btn" data-view="race">
+        <span class="tab-icon">&#127937;</span>Race
+      </button>
+      <button class="tab-btn" data-view="info">
+        <span class="tab-icon">&#8505;</span>Info
+      </button>
+    </div>
+
+    <div class="toast" id="toast">Saved</div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="config.js"></script>
+    <script src="config.local.js"></script>
+    <script src="app.js"></script>
+  </body>
 </html>

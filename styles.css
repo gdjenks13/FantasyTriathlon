@@ -54,6 +54,12 @@ h1,h2,h3,h4{ margin: 0; font-weight: 700; letter-spacing: -0.01em; }
   margin-bottom: 2px;
 }
 .app-header h1{ font-size: 22px; }
+.race-distances{
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-top: 2px;
+  letter-spacing: 0.02em;
+}
 .btn-header-action{
   background: var(--accent);
   color: #ffffff;
@@ -70,12 +76,44 @@ h1,h2,h3,h4{ margin: 0; font-weight: 700; letter-spacing: -0.01em; }
   background: var(--bg-elev-2);
   color: var(--text-dim);
 }
+.btn-header-back{
+  background: var(--bg-elev-2);
+  color: var(--text);
+  border: 1px solid var(--line);
+}
+.btn-header-back:active{ background: var(--bg-elev); }
 .save-indicator{
   font-size: 11px;
   color: var(--text-dim);
   margin-top: 4px;
 }
 .save-indicator.pending{ color: var(--warn); }
+.cloud-status{
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+.cloud-status.ok{ color: var(--good); }
+.cloud-status.warn{ color: var(--warn); }
+.cloud-status.err{ color: var(--accent-dark); }
+.cloud-status.editor{ color: var(--accent-dark); font-weight: 600; }
+.cloud-card .field-group{ margin-bottom: 10px; }
+.cloud-editor-line{
+  font-size: 13px;
+  margin: 0 0 10px;
+}
+body.spectator-mode .editor-only-hint{ display: block; }
+.spectator-banner{
+  background: var(--stripe-blue);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-bottom: 12px;
+  line-height: 1.4;
+}
+body:not(.spectator-mode) .spectator-banner{ display: none; }
 
 /* ---------- Layout ---------- */
 .view{ display:none; padding: 4px 16px 24px; }
@@ -198,6 +236,11 @@ input:focus, select:focus{ outline: 2px solid var(--accent); outline-offset: 1px
 }
 .time-entry-input::placeholder{ color: var(--text-dim); font-weight: 400; }
 .time-entry-input:focus{ outline: 2px solid var(--accent); outline-offset: 1px; }
+.time-entry-input.is-readonly{
+  background: var(--bg-elev-2);
+  color: var(--text-dim);
+  font-weight: 600;
+}
 
 .field-group{ margin-bottom: 14px; }
 .field-group:last-child{ margin-bottom: 0; }
@@ -294,12 +337,17 @@ input:focus, select:focus{ outline: 2px solid var(--accent); outline-offset: 1px
 
 /* ---------- Leaderboard ---------- */
 .lb-row{
-  display:flex; align-items:center; gap: 12px;
   background: var(--bg-elev);
   border: 1px solid var(--line);
   border-radius: 12px;
   padding: 12px 14px;
   margin-bottom: 10px;
+}
+.lb-row-top{
+  display:flex;
+  align-items:center;
+  gap: 10px;
+  cursor: pointer;
 }
 .lb-rank{
   font-family: var(--font-mono);
@@ -313,7 +361,12 @@ input:focus, select:focus{ outline: 2px solid var(--accent); outline-offset: 1px
 .lb-row:nth-child(1) .lb-rank{ color: var(--accent); }
 .lb-main{ flex:1; min-width:0; }
 .lb-main .lb-name{ font-weight: 700; font-size: 15px; }
-.lb-main .lb-sub{ font-size: 12px; color: var(--text-dim); margin-top: 2px; }
+.lb-main .lb-sub{
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-top: 2px;
+  line-height: 1.35;
+}
 .lb-points{
   font-family: var(--font-mono);
   font-weight: 700;
@@ -331,15 +384,171 @@ input:focus, select:focus{ outline: 2px solid var(--accent); outline-offset: 1px
   color: var(--text-dim);
   text-align:right;
 }
-
-/* breakdown chips */
-.breakdown{ margin-top: 14px; }
-.breakdown-athlete{ margin-bottom: 14px; }
-.breakdown-athlete:last-child{ margin-bottom: 0; }
-.breakdown-athlete .ba-name{
-  font-size: 13px; font-weight: 700; margin-bottom: 6px;
-  color: var(--text);
+.lb-chevron{
+  color: var(--text-dim);
+  font-size: 12px;
+  flex-shrink: 0;
+  transition: transform 0.15s ease;
 }
+.lb-row.open .lb-chevron{ transform: rotate(90deg); }
+
+/* Category breakdown (ranking / time / wildcards) */
+.breakdown{
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.bd-category{ margin-bottom: 12px; }
+.bd-category:last-child{ margin-bottom: 0; }
+.bd-category-head{
+  display:flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+.bd-category-title{
+  font-size: 13px;
+  font-weight: 700;
+}
+.bd-category-total{
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent);
+  text-align: right;
+  white-space: nowrap;
+}
+.bd-max{
+  font-weight: 500;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+.bd-detail-btn{
+  margin-top: 12px;
+  width: 100%;
+  font-size: 14px;
+  font-weight: 600;
+}
+.bd-lines{
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+  background: #ffffff;
+}
+.bd-line{
+  display:flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  font-size: 13px;
+}
+.bd-line:nth-child(odd){ background: var(--bg-elev); }
+.bd-line:nth-child(even){ background: var(--stripe-blue); }
+.bd-line-label{ color: var(--text-dim); }
+.bd-line .pts-pill{ flex-shrink: 0; min-width: 3.25rem; }
+
+/* ---------- Prediction compare detail ---------- */
+.compare-summary{
+  margin-bottom: 14px;
+}
+.compare-player-name{
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+.compare-total{
+  font-family: var(--font-mono);
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--accent);
+  margin-bottom: 12px;
+}
+.compare-cat-row{
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 8px;
+}
+.compare-cat{
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px;
+  text-align: center;
+}
+.compare-cat-lbl{
+  display: block;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-dim);
+  margin-bottom: 4px;
+}
+.compare-cat-val{
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 13px;
+}
+.compare-block{
+  background: var(--bg-elev);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+}
+.compare-athlete-card{
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px;
+  margin-bottom: 10px;
+}
+.compare-athlete-card.stripe-a{ background: var(--bg-elev); }
+.compare-athlete-card.stripe-b{ background: var(--stripe-blue); }
+.compare-athlete-name{
+  font-weight: 700;
+  font-size: 15px;
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px dashed var(--line);
+}
+.compare-metric{
+  margin-bottom: 10px;
+}
+.compare-metric:last-child{ margin-bottom: 0; }
+.compare-metric-title{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+.compare-metric-grid{
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 6px;
+}
+.compare-metric-grid .cm-k{
+  display: block;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+  margin-bottom: 2px;
+}
+.compare-metric-grid .cm-v{
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+.compare-metric-grid .cm-v.mono{
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
 .chip-row{ display:flex; flex-wrap: wrap; gap: 6px; }
 .chip{
   font-family: var(--font-mono);
@@ -354,7 +563,6 @@ input:focus, select:focus{ outline: 2px solid var(--accent); outline-offset: 1px
 .chip.pts-high{ border-color: var(--accent); color: var(--accent-dark); }
 .chip.pts-mid{ border-color: var(--warn); color: var(--warn); }
 .chip.pts-zero{ opacity: 0.5; }
-.wildcard-chips{ display:flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
 
 /* ---------- Tab bar ---------- */
 .tab-bar{
@@ -382,6 +590,52 @@ input:focus, select:focus{ outline: 2px solid var(--accent); outline-offset: 1px
 .divider{ height:1px; background: var(--line); margin: 18px 0; border:none; }
 .helper-text{ font-size: 12px; color: var(--text-dim); line-height: 1.5; margin-top: 4px; }
 .footer-actions{ margin-top: 28px; }
+.footer-actions .btn-block{
+  width: 100%;
+  margin-bottom: 10px;
+}
+.backup-row{
+  display: flex;
+  gap: 8px;
+  margin: 10px 0 6px;
+}
+.backup-row .btn-secondary{
+  flex: 1;
+  width: auto;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 12px 8px;
+}
+.rules-panel{
+  background: var(--bg-elev);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 14px;
+  margin: 0 0 12px;
+}
+.rules-section{ margin-bottom: 14px; }
+.rules-section:last-of-type{ margin-bottom: 8px; }
+.rules-title{
+  font-size: 13px;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+.rules-list{
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1.45;
+}
+.rules-list li{ margin-bottom: 4px; }
+.rules-note{
+  font-size: 12px;
+  color: var(--text-dim);
+  line-height: 1.45;
+  margin: 0;
+  padding-top: 8px;
+  border-top: 1px dashed var(--line);
+}
 .toast{
   position: fixed;
   bottom: 96px; left: 50%;
@@ -466,20 +720,232 @@ input:focus, select:focus{ outline: 2px solid var(--accent); outline-offset: 1px
 .stats-athlete-block:first-of-type{ border-top:none; margin-top:0; padding-top:0; }
 .stats-athlete-block .sa-name{ font-weight: 700; font-size: 15px; margin-bottom: 8px; }
 .stat-row{
-  display:flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 3.2rem 4.6rem minmax(4.8rem, auto);
   align-items: baseline;
-  padding: 4px 0;
-  font-size: 13px;
+  column-gap: 6px;
+  padding: 5px 0;
+  font-size: 12px;
 }
-.stat-row .stat-label{ color: var(--text-dim); }
-.stat-row .stat-value{
+.stat-row-header{
+  padding-bottom: 2px;
+  margin-bottom: 2px;
+  border-bottom: 1px solid var(--line);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.stat-row-header .stat-rank,
+.stat-row-header .stat-time,
+.stat-row-header .stat-speed{
+  font-family: var(--font-body);
+  font-weight: 600;
+  color: var(--text-dim);
+  font-size: 10px;
+}
+.stat-row .stat-label{ color: var(--text-dim); min-width: 0; }
+.stat-row .stat-rank,
+.stat-row .stat-time{
   font-family: var(--font-mono);
   font-weight: 700;
   color: var(--text);
+  text-align: right;
+}
+.stat-row .stat-speed{
+  font-family: var(--font-mono);
+  font-weight: 400;
+  color: var(--text-dim);
+  text-align: right;
+  white-space: nowrap;
 }
 
-/* ---------- Athlete vs Average (Leaderboard tab) ---------- */
+/* ---------- Info tab ---------- */
+.info-card{
+  background: var(--bg-elev);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 14px;
+  margin-bottom: 12px;
+}
+.info-lead{
+  font-size: 15px;
+  line-height: 1.45;
+  margin: 0 0 12px;
+}
+.info-body{
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text);
+  margin: 0 0 10px;
+}
+.info-body a{
+  color: var(--accent);
+  font-weight: 600;
+  text-decoration: underline;
+}
+.info-body:last-child{ margin-bottom: 0; }
+.info-list{
+  margin: 0 0 12px;
+  padding-left: 18px;
+  font-size: 14px;
+  line-height: 1.45;
+}
+.info-list li{ margin-bottom: 6px; }
+.info-row{
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 0;
+  border-top: 1px dashed var(--line);
+  font-size: 13px;
+}
+.info-row:first-of-type{ border-top: 1px solid var(--line); }
+.info-k{
+  color: var(--text-dim);
+  font-weight: 600;
+  flex-shrink: 0;
+}
+.info-v{
+  font-family: var(--font-mono);
+  text-align: right;
+  font-size: 12px;
+}
+.info-card .rules-title{ margin-top: 4px; }
+.info-card .rules-note{ margin-top: 4px; }
+
+/* ---------- Scoring tables (Info tab) ---------- */
+.score-block{
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+.score-block:first-of-type{
+  margin-top: 12px;
+}
+.score-block-title{
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin-bottom: 2px;
+}
+.score-block-sub{
+  font-size: 12px;
+  color: var(--text-dim);
+  margin: 0 0 10px;
+  line-height: 1.4;
+}
+.score-footnote{
+  font-size: 11px;
+  color: var(--text-dim);
+  margin: 8px 0 0;
+  line-height: 1.4;
+}
+.score-table{
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+  background: #ffffff;
+  font-size: 13px;
+}
+.score-table thead th{
+  background: var(--bg-elev-2);
+  color: var(--text-dim);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line);
+}
+.score-table tbody td{
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: middle;
+}
+.score-table tbody tr:last-child td{ border-bottom: none; }
+.score-table tbody tr:nth-child(odd){ background: var(--bg-elev); }
+.score-table tbody tr:nth-child(even){ background: var(--stripe-blue); }
+.score-pts-col{
+  width: 4.25rem;
+  text-align: right !important;
+}
+.score-table-compact{ font-size: 12px; }
+.score-table-compact tbody td{ padding: 7px 8px; }
+.score-table-compact thead th{ padding: 7px 8px; }
+
+.pts-pill{
+  display: inline-block;
+  min-width: 1.75rem;
+  text-align: center;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 12px;
+  padding: 3px 7px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: #ffffff;
+  color: var(--text-dim);
+}
+.pts-pill-high{
+  border-color: var(--accent);
+  color: var(--accent-dark);
+  background: #fff5f5;
+}
+.pts-pill-mid{
+  border-color: var(--warn);
+  color: var(--warn);
+  background: #fffbeb;
+}
+.pts-pill-low{
+  border-color: var(--line);
+  color: var(--text);
+  background: #ffffff;
+}
+.pts-pill-zero{
+  opacity: 0.55;
+  font-weight: 600;
+}
+
+.time-score-grid{
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.time-score-card{
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px;
+}
+.time-score-head{
+  font-size: 13px;
+  font-weight: 700;
+  margin-bottom: 8px;
+  color: var(--text);
+}
+.time-score-note{
+  font-size: 11px;
+  color: var(--text-dim);
+  margin: -4px 0 8px;
+}
+.time-score-card .score-table{
+  border-radius: 8px;
+}
+
+@media (min-width: 520px){
+  .time-score-grid{
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 10px;
+    align-items: start;
+  }
+}
+
+/* ---------- Athlete vs Average ---------- */
 .avg-compare-card{
   background: var(--bg-elev);
   border: 1px solid var(--line);
