@@ -45,6 +45,15 @@ h1,h2,h3,h4{ margin: 0; font-weight: 700; letter-spacing: -0.01em; }
   justify-content: space-between;
   gap: 10px;
 }
+.header-titles{ min-width: 0; flex: 1; }
+.header-actions{
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.header-actions .btn-header-action{ margin-top: 0; }
 .app-header .eyebrow{
   font-family: var(--font-mono);
   font-size: 11px;
@@ -102,7 +111,6 @@ h1,h2,h3,h4{ margin: 0; font-weight: 700; letter-spacing: -0.01em; }
   font-size: 13px;
   margin: 0 0 10px;
 }
-body.spectator-mode .editor-only-hint{ display: block; }
 .spectator-banner{
   background: var(--stripe-blue);
   border: 1px solid var(--line);
@@ -113,7 +121,52 @@ body.spectator-mode .editor-only-hint{ display: block; }
   margin-bottom: 12px;
   line-height: 1.4;
 }
-body:not(.spectator-mode) .spectator-banner{ display: none; }
+
+/* Login modal */
+.login-modal{
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+.login-modal-backdrop{
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,0.4);
+}
+.login-modal-sheet{
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 420px;
+  max-height: 90vh;
+  overflow: auto;
+  background: var(--bg);
+  border-radius: 16px 16px 0 0;
+  padding: 16px 16px calc(16px + env(safe-area-inset-bottom, 0));
+  border: 1px solid var(--line);
+  box-shadow: 0 -8px 30px rgba(0,0,0,0.12);
+}
+.login-modal-head{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.login-modal-head h2{
+  font-size: 18px;
+  margin: 0;
+}
+@media (min-width: 480px){
+  .login-modal{ align-items: center; }
+  .login-modal-sheet{
+    border-radius: 16px;
+    margin: 16px;
+  }
+}
 
 /* ---------- Layout ---------- */
 .view{ display:none; padding: 4px 16px 24px; }
@@ -571,7 +624,7 @@ input:focus, select:focus{ outline: 2px solid var(--accent); outline-offset: 1px
   background: var(--bg);
   border-top: 1px solid var(--line);
   padding-bottom: env(safe-area-inset-bottom, 0);
-  z-index: 30;
+  z-index: 40;
 }
 .tab-btn{
   flex:1;
@@ -582,8 +635,13 @@ input:focus, select:focus{ outline: 2px solid var(--accent); outline-offset: 1px
   font-size: 11px;
   font-weight: 600;
   border-radius: 0;
+  position: relative;
+  z-index: 1;
+  touch-action: manipulation;
+  -webkit-user-select: none;
+  user-select: none;
 }
-.tab-btn .tab-icon{ font-size: 20px; }
+.tab-btn .tab-icon{ font-size: 20px; pointer-events: none; }
 .tab-btn.active{ color: var(--accent); }
 
 /* ---------- Misc ---------- */

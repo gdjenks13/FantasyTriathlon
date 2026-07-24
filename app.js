@@ -282,8 +282,20 @@
     return window.FANTASY_CONFIG || {};
   }
 
+  function hasCloudConfig() {
+    var cfg = getConfig();
+    return !!(cfg.supabaseUrl && String(cfg.supabaseAnonKey || "").trim());
+  }
+
   function isEditor() {
     return !!(authUser && supabaseClient);
+  }
+
+  // When cloud is configured, only the logged-in editor may change data.
+  // Spectators always view shared Supabase state.
+  function canEditData() {
+    if (!hasCloudConfig()) return true;
+    return isEditor();
   }
 
   function setCloudStatus(text, kind) {
@@ -293,62 +305,89 @@
     el.className = "cloud-status" + (kind ? " " + kind : "");
   }
 
+  function openLoginModal() {
+    var modal = document.getElementById("login-modal");
+    if (!modal) return;
+    var cfg = getConfig();
+    var emailInput = document.getElementById("cloud-email");
+    if (emailInput && !emailInput.value && cfg.editorEmail) {
+      emailInput.value = cfg.editorEmail;
+    }
+    modal.style.display = "flex";
+    modal.removeAttribute("hidden");
+    modal.setAttribute("aria-hidden", "false");
+    setTimeout(function () {
+      var pw = document.getElementById("cloud-password");
+      if (emailInput && !emailInput.value) emailInput.focus();
+      else if (pw) pw.focus();
+    }, 50);
+  }
+
+  function closeLoginModal() {
+    var modal = document.getElementById("login-modal");
+    if (!modal) return;
+    modal.style.display = "none";
+    modal.setAttribute("hidden", "");
+    modal.setAttribute("aria-hidden", "true");
+  }
+
   function updateEditorUI() {
-    var loginForm = document.getElementById("cloud-login-form");
     var editorBar = document.getElementById("cloud-editor-bar");
     var emailEl = document.getElementById("cloud-user-email");
-    var hint = document.getElementById("cloud-mode-hint");
-    if (!loginForm || !editorBar) return;
+    var headerLogin = document.getElementById("header-login-btn");
+    var emailInput = document.getElementById("cloud-email");
+    var cfg = getConfig();
 
-    if (!cloudConfigured) {
-      loginForm.style.display = "none";
-      editorBar.style.display = "none";
-      if (hint) {
-        hint.textContent =
-          "Cloud is not configured yet. Add your Supabase anon key to config.js (see README).";
+    if (emailInput && !emailInput.value && cfg.editorEmail) {
+      emailInput.value = cfg.editorEmail;
+    }
+
+    if (!hasCloudConfig()) {
+      if (editorBar) editorBar.style.display = "none";
+      if (headerLogin) {
+        headerLogin.style.display = "none";
       }
       document.body.classList.remove("spectator-mode");
       return;
     }
 
+    if (headerLogin) headerLogin.style.display = "inline-block";
+
     if (isEditor()) {
-      loginForm.style.display = "none";
-      editorBar.style.display = "block";
+      if (editorBar) editorBar.style.display = "block";
       if (emailEl) emailEl.textContent = authUser.email || "editor";
-      if (hint) {
-        hint.textContent =
-          "Editor mode: your saves publish to the cloud for all spectators.";
+      if (headerLogin) {
+        headerLogin.textContent = "Log out";
+        headerLogin.classList.add("is-saved");
+        headerLogin.title = "Signed in as " + (authUser.email || "editor");
       }
       document.body.classList.remove("spectator-mode");
+      closeLoginModal();
       setCloudStatus(
-        "Editor · signed in" +
+        "Editor · " +
+          (authUser.email || "signed in") +
           (cloudLastRemoteAt
-            ? " · last publish " + formatCloudTime(cloudLastRemoteAt)
+            ? " · " + formatCloudTime(cloudLastRemoteAt)
             : ""),
         "editor",
       );
     } else {
-      loginForm.style.display = "block";
-      editorBar.style.display = "none";
-      if (hint) {
-        hint.textContent =
-          "Spectator mode: viewing shared cloud data. Log in only if you are the race editor.";
+      if (editorBar) editorBar.style.display = "none";
+      if (headerLogin) {
+        headerLogin.textContent = "Log in";
+        headerLogin.classList.remove("is-saved");
+        headerLogin.title = "Editor log in to publish changes";
       }
       document.body.classList.add("spectator-mode");
       setCloudStatus(
-        "Spectator · live" +
-          (cloudLastRemoteAt
-            ? " · updated " + formatCloudTime(cloudLastRemoteAt)
-            : ""),
-        "ok",
+        cloudConfigured
+          ? "Live data" +
+              (cloudLastRemoteAt
+                ? " · updated " + formatCloudTime(cloudLastRemoteAt)
+                : " · loading…")
+          : "Connecting to shared data…",
+        cloudLastRemoteAt ? "ok" : "warn",
       );
-    }
-
-    // Prefill editor email from config once
-    var emailInput = document.getElementById("cloud-email");
-    var cfg = getConfig();
-    if (emailInput && !emailInput.value && cfg.editorEmail) {
-      emailInput.value = cfg.editorEmail;
     }
   }
 
@@ -438,14 +477,15 @@
       var remoteAt = res.data.updated_at;
       var shouldApply = !!opts.force;
       if (!shouldApply && !isEditor()) {
-        // Spectators always take remote
+        // Spectators always use Supabase as source of truth
         shouldApply =
+          !!opts.initial ||
+          !!opts.force ||
           !cloudLastRemoteAt ||
-          new Date(remoteAt).getTime() > new Date(cloudLastRemoteAt).getTime() ||
-          opts.initial;
+          new Date(remoteAt).getTime() > new Date(cloudLastRemoteAt).getTime();
       }
       if (!shouldApply && isEditor() && opts.initial) {
-        // Editor: prefer local if it has more data; else take cloud
+        // Editor first load: take cloud if local is empty
         var localPlayers = (state.players && state.players.length) || 0;
         var remotePlayers =
           (res.data.payload &&
@@ -454,6 +494,8 @@
           0;
         shouldApply = remotePlayers > 0 && localPlayers === 0;
       }
+      // Explicit force (e.g. after logout) always applies
+      if (opts.force) shouldApply = true;
       if (shouldApply) {
         applyRemoteState(res.data.payload, remoteAt, { rerender: true });
         if (!opts.silent && !opts.initial) showToast("Updated from cloud");
@@ -573,77 +615,197 @@
 
   async function cloudLogin(email, password) {
     var errEl = document.getElementById("cloud-login-error");
+    var loginBtn = document.getElementById("cloud-login-btn");
     if (errEl) {
       errEl.style.display = "none";
       errEl.textContent = "";
     }
-    if (!supabaseClient) return;
-    var res = await supabaseClient.auth.signInWithPassword({
-      email: email,
-      password: password,
-    });
-    if (res.error) {
+    if (!supabaseClient) {
       if (errEl) {
         errEl.style.display = "block";
-        errEl.textContent = res.error.message || "Login failed";
+        errEl.textContent = "Cloud is not connected yet. Wait a moment and retry.";
       }
-      showToast("Login failed");
       return;
     }
-    authUser = res.data.user;
-    updateEditorUI();
-    renderAllViews();
-    showToast("Logged in as editor");
+    if (loginBtn) {
+      loginBtn.disabled = true;
+      loginBtn.textContent = "Signing in…";
+    }
+    try {
+      var res = await withTimeout(
+        supabaseClient.auth.signInWithPassword({
+          email: email,
+          password: password,
+        }),
+        12000,
+        "Login",
+      );
+      if (res.error) {
+        if (errEl) {
+          errEl.style.display = "block";
+          errEl.textContent =
+            res.error.message ||
+            "Login failed. Use the Auth user email/password from Supabase → Authentication → Users (not the database password).";
+        }
+        showToast("Login failed");
+        return;
+      }
+      authUser = res.data.user;
+      updateEditorUI();
+      renderAllViews();
+      showToast("Logged in as editor");
+    } catch (e) {
+      if (errEl) {
+        errEl.style.display = "block";
+        errEl.textContent = e.message || "Login timed out";
+      }
+      showToast("Login failed");
+    } finally {
+      if (loginBtn) {
+        loginBtn.disabled = false;
+        loginBtn.textContent = "Log in";
+      }
+    }
   }
 
   async function cloudLogout() {
     if (supabaseClient) await supabaseClient.auth.signOut();
     authUser = null;
     updateEditorUI();
-    await pullCloudState({ force: true, silent: true });
+    await pullCloudState({ force: true, silent: true, initial: false });
     renderAllViews();
-    showToast("Logged out");
+    showToast("Logged out — showing live shared data");
+  }
+
+  function withTimeout(promise, ms, label) {
+    return Promise.race([
+      promise,
+      new Promise(function (_, reject) {
+        setTimeout(function () {
+          reject(new Error((label || "Request") + " timed out"));
+        }, ms);
+      }),
+    ]);
+  }
+
+  function getSupabaseCreateClient() {
+    // UMD build exposes global `supabase` with createClient
+    if (typeof supabase !== "undefined" && supabase.createClient) {
+      return supabase.createClient;
+    }
+    // Some builds attach to window.supabase separately
+    if (
+      typeof window !== "undefined" &&
+      window.supabase &&
+      window.supabase.createClient
+    ) {
+      return window.supabase.createClient;
+    }
+    return null;
   }
 
   async function initCloud() {
-    var cfg = getConfig();
-    var url = cfg.supabaseUrl || "";
-    var key = (cfg.supabaseAnonKey || "").trim();
-    if (!url || !key) {
-      cloudConfigured = false;
-      setCloudStatus("Cloud not configured (add anon key)", "warn");
-      updateEditorUI();
-      return;
-    }
-    if (typeof supabase === "undefined" || !supabase.createClient) {
-      cloudConfigured = false;
-      setCloudStatus("Cloud library failed to load", "err");
-      return;
-    }
-    cloudConfigured = true;
-    supabaseClient = supabase.createClient(url, key);
-    setCloudStatus("Cloud: connecting…");
+    try {
+      var cfg = getConfig();
+      var url = cfg.supabaseUrl || "";
+      var key = (cfg.supabaseAnonKey || "").trim();
+      if (!url || !key) {
+        cloudConfigured = false;
+        setCloudStatus("Cloud not configured (add anon key in config.js)", "warn");
+        updateEditorUI();
+        return;
+      }
+      var createClient = getSupabaseCreateClient();
+      if (!createClient) {
+        cloudConfigured = false;
+        setCloudStatus("Cloud library failed to load — check network/CDN", "err");
+        updateEditorUI();
+        return;
+      }
+      cloudConfigured = true;
+      supabaseClient = createClient(url, key, {
+        auth: {
+          persistSession: true,
+          autoRefreshToken: true,
+          detectSessionInUrl: false,
+        },
+      });
+      setCloudStatus("Cloud: connecting…");
 
-    var sessionRes = await supabaseClient.auth.getSession();
-    authUser =
-      sessionRes.data && sessionRes.data.session
-        ? sessionRes.data.session.user
-        : null;
+      // Prefill editor email early so login is obvious
+      var emailInput = document.getElementById("cloud-email");
+      if (emailInput && !emailInput.value && cfg.editorEmail) {
+        emailInput.value = cfg.editorEmail;
+      }
 
-    supabaseClient.auth.onAuthStateChange(function (_event, session) {
-      authUser = session ? session.user : null;
+      try {
+        var sessionRes = await withTimeout(
+          supabaseClient.auth.getSession(),
+          8000,
+          "Auth session",
+        );
+        authUser =
+          sessionRes.data && sessionRes.data.session
+            ? sessionRes.data.session.user
+            : null;
+      } catch (sessErr) {
+        console.warn("getSession issue", sessErr);
+        authUser = null;
+      }
+
+      supabaseClient.auth.onAuthStateChange(function (_event, session) {
+        authUser = session ? session.user : null;
+        updateEditorUI();
+        // Avoid full re-render loops on INITIAL_SESSION during startup
+        if (_event === "SIGNED_IN" || _event === "SIGNED_OUT") {
+          renderAllViews();
+        }
+      });
+
+      await withTimeout(
+        pullCloudState({ initial: true, silent: true }),
+        10000,
+        "Cloud pull",
+      );
+      subscribeCloudRealtime();
+      startCloudPoll();
       updateEditorUI();
       renderAllViews();
-    });
 
-    await pullCloudState({ initial: true, silent: true });
-    subscribeCloudRealtime();
-    startCloudPoll();
-    updateEditorUI();
-    renderAllViews();
+      // Guarantee we leave "connecting" if nothing else set a message
+      var statusEl = document.getElementById("cloud-status");
+      if (
+        statusEl &&
+        /connecting/i.test(statusEl.textContent || "")
+      ) {
+        setCloudStatus(
+          isEditor()
+            ? "Editor · signed in"
+            : "Live data · tap Log in (top right) to edit",
+          isEditor() ? "editor" : "ok",
+        );
+      }
+    } catch (e) {
+      console.error("initCloud failed", e);
+      setCloudStatus(
+        "Cloud error: " + (e && e.message ? e.message : "init failed"),
+        "err",
+      );
+      updateEditorUI();
+    }
   }
 
   function wireCloudUI() {
+    var headerLogin = document.getElementById("header-login-btn");
+    if (headerLogin) {
+      headerLogin.addEventListener("click", function () {
+        if (isEditor()) {
+          cloudLogout();
+          return;
+        }
+        openLoginModal();
+      });
+    }
     var loginBtn = document.getElementById("cloud-login-btn");
     if (loginBtn) {
       loginBtn.addEventListener("click", function () {
@@ -656,24 +818,25 @@
         cloudLogin(email, password);
       });
     }
-    var logoutBtn = document.getElementById("cloud-logout-btn");
-    if (logoutBtn) {
-      logoutBtn.addEventListener("click", function () {
-        cloudLogout();
-      });
-    }
     var publishBtn = document.getElementById("cloud-publish-btn");
     if (publishBtn) {
       publishBtn.addEventListener("click", function () {
         pushCloudState({ silent: false });
       });
     }
+    var closeBtn = document.getElementById("login-modal-close");
+    var backdrop = document.getElementById("login-modal-backdrop");
+    if (closeBtn) closeBtn.addEventListener("click", closeLoginModal);
+    if (backdrop) backdrop.addEventListener("click", closeLoginModal);
     var pw = document.getElementById("cloud-password");
     if (pw) {
       pw.addEventListener("keydown", function (e) {
         if (e.key === "Enter") loginBtn && loginBtn.click();
       });
     }
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape") closeLoginModal();
+    });
   }
 
   /* ===================== TIME HELPERS ===================== */
@@ -1056,40 +1219,63 @@
   var currentView = "predictions";
 
   function switchView(name) {
-    currentView = name;
-    views.forEach(function (v) {
-      var el = document.getElementById("view-" + v);
-      if (el) el.classList.toggle("active", v === name);
-    });
-    document.querySelectorAll(".tab-btn").forEach(function (btn) {
-      // Compare is a sub-screen of Race — keep Race tab highlighted
-      var active =
-        btn.dataset.view === name ||
-        (name === "compare" && btn.dataset.view === "race");
-      btn.classList.toggle("active", active);
-    });
-    document.getElementById("header-title").textContent = titles[name] || name;
-    document.getElementById("save-results-btn").style.display =
-      name === "race" ? "inline-block" : "none";
-    var backBtn = document.getElementById("back-from-compare-btn");
-    if (backBtn) {
-      backBtn.style.display = name === "compare" ? "inline-block" : "none";
+    try {
+      if (!name || views.indexOf(name) === -1) return;
+      currentView = name;
+      views.forEach(function (v) {
+        var el = document.getElementById("view-" + v);
+        if (el) el.classList.toggle("active", v === name);
+      });
+      document.querySelectorAll(".tab-btn").forEach(function (btn) {
+        // Compare is a sub-screen of Race — keep Race tab highlighted
+        var active =
+          btn.dataset.view === name ||
+          (name === "compare" && btn.dataset.view === "race");
+        btn.classList.toggle("active", active);
+      });
+      var titleEl = document.getElementById("header-title");
+      if (titleEl) titleEl.textContent = titles[name] || name;
+
+      var saveBtn = document.getElementById("save-results-btn");
+      if (saveBtn) {
+        saveBtn.style.display =
+          name === "race" && canEditData() ? "inline-block" : "none";
+      }
+      var backBtn = document.getElementById("back-from-compare-btn");
+      if (backBtn) {
+        backBtn.style.display = name === "compare" ? "inline-block" : "none";
+      }
+      // Never leave login modal covering the app after a tab change
+      if (name !== "compare") {
+        /* keep modal only if user opened it */
+      }
+
+      if (name === "pool") renderViewPredictions();
+      if (name === "race") {
+        renderLeaderboard();
+        renderResults();
+        updateResultsSaveButton();
+      }
+      if (name === "compare") renderPlayerCompare();
+      if (name === "predictions") renderPlayers();
+      updateSaveIndicator();
+      updateEditorUI();
+    } catch (e) {
+      console.error("switchView failed", name, e);
     }
-    if (name === "pool") renderViewPredictions();
-    if (name === "race") {
-      renderLeaderboard();
-      renderResults();
-      updateResultsSaveButton();
-    }
-    if (name === "compare") renderPlayerCompare();
-    updateSaveIndicator();
   }
 
-  document.querySelectorAll(".tab-btn").forEach(function (btn) {
-    btn.addEventListener("click", function () {
-      switchView(btn.dataset.view);
+  // Event delegation so tabs always work even if buttons are re-rendered
+  var tabBar = document.querySelector(".tab-bar");
+  if (tabBar) {
+    tabBar.addEventListener("click", function (e) {
+      var btn = e.target.closest(".tab-btn");
+      if (!btn) return;
+      e.preventDefault();
+      var view = btn.getAttribute("data-view");
+      if (view) switchView(view);
     });
-  });
+  }
 
   document
     .getElementById("back-from-compare-btn")
@@ -1140,26 +1326,26 @@
     var emptyEl = document.getElementById("players-empty");
     listEl.innerHTML = "";
 
-    var canEdit = isEditor() || !cloudConfigured;
+    var canEdit = canEditData();
     var addInput = document.getElementById("new-player-name");
     var addBtn = document.getElementById("add-player-btn");
     if (addInput) {
       addInput.disabled = !canEdit;
       addInput.placeholder = canEdit
         ? "Fantasy player name"
-        : "Log in on Race tab to edit";
+        : "Log in (top right) to edit";
     }
     if (addBtn) addBtn.disabled = !canEdit;
 
     // Spectator banner on Predict tab
     var existingBanner = document.getElementById("spectator-banner-predict");
     if (existingBanner) existingBanner.remove();
-    if (cloudConfigured && !isEditor()) {
+    if (hasCloudConfig() && !isEditor()) {
       var ban = document.createElement("div");
       ban.id = "spectator-banner-predict";
       ban.className = "spectator-banner";
       ban.textContent =
-        "Spectator mode — viewing shared data. Log in on the Race tab to edit and publish.";
+        "Viewing live shared data. Tap Log in (top right) only if you are the race editor.";
       listEl.parentNode.insertBefore(ban, listEl);
     }
 
@@ -1198,8 +1384,8 @@
       header
         .querySelector(".delete-player-btn")
         .addEventListener("click", function () {
-          if (!isEditor()) {
-            showToast("Log in as editor to make changes");
+          if (!canEditData()) {
+            showToast("Log in (top right) to edit");
             return;
           }
           if (
@@ -1326,8 +1512,8 @@
       "btn-primary save-prediction-btn" + (dirty ? "" : " is-saved");
     saveBtn.textContent = dirty ? "Save Prediction" : "Prediction Saved \u2713";
     saveBtn.addEventListener("click", function () {
-      if (!isEditor()) {
-        showToast("Log in as editor to make changes");
+      if (!canEditData()) {
+        showToast("Log in (top right) to edit");
         return;
       }
       player.predictions = deepCopy(player.draftPredictions);
@@ -1376,6 +1562,7 @@
     render();
 
     function commit() {
+      if (!canEditData()) return;
       if (digits === "") {
         onChange(null);
         return;
@@ -1426,17 +1613,17 @@
     inp.addEventListener("blur", commit);
     inp.addEventListener("change", commit);
     inp.addEventListener("focus", function () {
-      if (!isEditor() && cloudConfigured) {
+      if (!canEditData()) {
         inp.blur();
         return;
       }
       inp.select();
     });
 
-    if (!isEditor() && cloudConfigured) {
+    if (!canEditData()) {
       inp.readOnly = true;
       inp.classList.add("is-readonly");
-      inp.title = "Log in as editor to change times";
+      inp.title = "Log in (top right) to change times";
     }
 
     row.appendChild(inp);
@@ -1485,12 +1672,12 @@
       sel.appendChild(opt);
     });
     sel.addEventListener("change", function () {
-      if (!isEditor() && cloudConfigured) return;
+      if (!canEditData()) return;
       onChange(sel.value || null);
     });
-    if (!isEditor() && cloudConfigured) {
+    if (!canEditData()) {
       sel.disabled = true;
-      sel.title = "Log in as editor to change";
+      sel.title = "Log in (top right) to change";
     }
     return sel;
   }
@@ -1498,8 +1685,8 @@
   document
     .getElementById("add-player-btn")
     .addEventListener("click", function () {
-      if (!isEditor()) {
-        showToast("Log in as editor to make changes");
+      if (!canEditData()) {
+        showToast("Log in (top right) to edit");
         return;
       }
       var input = document.getElementById("new-player-name");
@@ -1744,8 +1931,8 @@
   document
     .getElementById("save-results-btn")
     .addEventListener("click", function () {
-      if (!isEditor()) {
-        showToast("Log in as editor to make changes");
+      if (!canEditData()) {
+        showToast("Log in (top right) to edit");
         return;
       }
       persistNow();
@@ -2605,8 +2792,8 @@
   document
     .getElementById("import-data-btn")
     .addEventListener("click", function () {
-      if (!isEditor()) {
-        showToast("Log in as editor to import");
+      if (!canEditData()) {
+        showToast("Log in (top right) to import");
         return;
       }
       if (
@@ -2630,8 +2817,8 @@
   document
     .getElementById("clear-data-btn")
     .addEventListener("click", function () {
-      if (!isEditor()) {
-        showToast("Log in as editor to clear data");
+      if (!canEditData()) {
+        showToast("Log in (top right) to clear data");
         return;
       }
       if (
@@ -2671,10 +2858,25 @@
 
   /* ===================== INIT ===================== */
   wireCloudUI();
+  // Lock edits immediately if cloud is configured (spectator until login)
+  if (hasCloudConfig()) {
+    document.body.classList.add("spectator-mode");
+    setCloudStatus("Loading shared data…", "warn");
+  }
+  updateEditorUI();
   renderPlayers();
   updateResultsSaveButton();
   updateSaveIndicator();
   switchView("predictions");
-  // Pull shared state after first paint
-  initCloud();
+  // Pull shared state after first paint (errors are handled inside)
+  Promise.resolve()
+    .then(function () {
+      return initCloud();
+    })
+    .catch(function (e) {
+      console.error("initCloud unhandled", e);
+      setCloudStatus("Cloud failed to start", "err");
+      updateEditorUI();
+      renderAllViews();
+    });
 })();
