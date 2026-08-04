@@ -12,7 +12,7 @@
   ];
   var STORAGE_KEY = "fantasyTriathlonState_v2";
   var SWIM_YARDS = 1640.42;
-  var BIKE_MILES = 25.6;
+  var BIKE_MILES = 24.2;
   var RUN_MILES = 6.213712;
 
   var RANK_POINTS = { 0: 5, 1: 3, 2: 1 }; // diff in rank -> points, else 0
@@ -363,9 +363,7 @@
       setCloudStatus(
         "Editor · " +
           (authUser.email || "signed in") +
-          (cloudLastRemoteAt
-            ? " · " + formatCloudTime(cloudLastRemoteAt)
-            : ""),
+          (cloudLastRemoteAt ? " · " + formatCloudTime(cloudLastRemoteAt) : ""),
         "editor",
       );
     } else {
@@ -463,12 +461,16 @@
       if (res.error) {
         console.error("Cloud pull failed", res.error);
         if (opts.initial) {
-          setCloudStatus("Cloud error: " + (res.error.message || "pull failed"), "err");
+          setCloudStatus(
+            "Cloud error: " + (res.error.message || "pull failed"),
+            "err",
+          );
         }
         return null;
       }
       if (!res.data) {
-        if (opts.initial) setCloudStatus("Cloud: empty — publish once as editor", "warn");
+        if (opts.initial)
+          setCloudStatus("Cloud: empty — publish once as editor", "warn");
         return null;
       }
       var remoteAt = res.data.updated_at;
@@ -620,7 +622,8 @@
     if (!supabaseClient) {
       if (errEl) {
         errEl.style.display = "block";
-        errEl.textContent = "Cloud is not connected yet. Wait a moment and retry.";
+        errEl.textContent =
+          "Cloud is not connected yet. Wait a moment and retry.";
       }
       return;
     }
@@ -708,14 +711,20 @@
       var key = (cfg.supabaseAnonKey || "").trim();
       if (!url || !key) {
         cloudConfigured = false;
-        setCloudStatus("Cloud not configured (add anon key in config.js)", "warn");
+        setCloudStatus(
+          "Cloud not configured (add anon key in config.js)",
+          "warn",
+        );
         updateEditorUI();
         return;
       }
       var createClient = getSupabaseCreateClient();
       if (!createClient) {
         cloudConfigured = false;
-        setCloudStatus("Cloud library failed to load — check network/CDN", "err");
+        setCloudStatus(
+          "Cloud library failed to load — check network/CDN",
+          "err",
+        );
         updateEditorUI();
         return;
       }
@@ -765,10 +774,7 @@
 
       // Guarantee we leave "connecting" if nothing else set a message
       var statusEl = document.getElementById("cloud-status");
-      if (
-        statusEl &&
-        /connecting/i.test(statusEl.textContent || "")
-      ) {
+      if (statusEl && /connecting/i.test(statusEl.textContent || "")) {
         setCloudStatus(
           isEditor()
             ? "Editor · signed in"
