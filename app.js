@@ -6,7 +6,6 @@
     "Nick Bame",
     "David De Genaro",
     "Glenn Jenkins",
-    "Caleb Schimming",
     "Noah Thammavong",
     "Nathan Webb",
   ];
@@ -260,7 +259,7 @@
   function hasUnsavedDraft(player) {
     return (
       JSON.stringify(player.draftPredictions) !==
-        JSON.stringify(player.predictions) ||
+      JSON.stringify(player.predictions) ||
       JSON.stringify(player.draftWildcards) !== JSON.stringify(player.wildcards)
     );
   }
@@ -362,8 +361,8 @@
       closeLoginModal();
       setCloudStatus(
         "Editor · " +
-          (authUser.email || "signed in") +
-          (cloudLastRemoteAt ? " · " + formatCloudTime(cloudLastRemoteAt) : ""),
+        (authUser.email || "signed in") +
+        (cloudLastRemoteAt ? " · " + formatCloudTime(cloudLastRemoteAt) : ""),
         "editor",
       );
     } else {
@@ -377,9 +376,9 @@
       setCloudStatus(
         cloudConfigured
           ? "Live data" +
-              (cloudLastRemoteAt
-                ? " · updated " + formatCloudTime(cloudLastRemoteAt)
-                : " · loading…")
+          (cloudLastRemoteAt
+            ? " · updated " + formatCloudTime(cloudLastRemoteAt)
+            : " · loading…")
           : "Connecting to shared data…",
         cloudLastRemoteAt ? "ok" : "warn",
       );
@@ -425,7 +424,7 @@
       state = normalizeState(deepCopy(payload || defaultState()));
       try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-      } catch (e) {}
+      } catch (e) { }
       captureResultsSnapshot();
       cloudLastRemoteAt = updatedAt || null;
       if (opts.rerender !== false) {
@@ -575,7 +574,7 @@
                 cloudLastRemoteAt &&
                 row.updated_at &&
                 new Date(row.updated_at).getTime() <=
-                  new Date(cloudLastRemoteAt).getTime() + 500
+                new Date(cloudLastRemoteAt).getTime() + 500
               ) {
                 return;
               }
@@ -590,9 +589,9 @@
           if (status === "SUBSCRIBED" && !isEditor()) {
             setCloudStatus(
               "Spectator · live" +
-                (cloudLastRemoteAt
-                  ? " · updated " + formatCloudTime(cloudLastRemoteAt)
-                  : ""),
+              (cloudLastRemoteAt
+                ? " · updated " + formatCloudTime(cloudLastRemoteAt)
+                : ""),
               "ok",
             );
           }
@@ -1388,8 +1387,8 @@
           if (
             confirm(
               'Remove fantasy player "' +
-                player.name +
-                '"? This cannot be undone.',
+              player.name +
+              '"? This cannot be undone.',
             )
           ) {
             state.players = state.players.filter(function (p) {
@@ -1642,7 +1641,7 @@
       // Select all so the next keystroke replaces the previous time
       try {
         inp.select();
-      } catch (e) {}
+      } catch (e) { }
     });
 
     if (!canEditData()) {
@@ -1845,10 +1844,10 @@
     var rankMap =
       disc === "transition"
         ? computeRanksWithTies(
-            ATHLETES.map(function (a) {
-              return { key: a, time: getResultTransition(state.results[a]) };
-            }),
-          )
+          ATHLETES.map(function (a) {
+            return { key: a, time: getResultTransition(state.results[a]) };
+          }),
+        )
         : ranks[disc] || {};
 
     var items = ATHLETES.map(function (a) {
@@ -1927,7 +1926,7 @@
           (field.disc === "swim" ||
             field.disc === "bike" ||
             field.disc === "run") &&
-          info
+            info
             ? ' <span class="rank-badge">' + ordinal(info.best) + "</span>"
             : "";
         fg.innerHTML = "<label>" + field.label + rankHint + "</label>";
@@ -2660,8 +2659,8 @@
           });
         var avgTime = predVals.length
           ? predVals.reduce(function (s, v) {
-              return s + v;
-            }, 0) / predVals.length
+            return s + v;
+          }, 0) / predVals.length
           : null;
 
         var actualRankInfo = actualRanks[disc][athlete];
@@ -2680,8 +2679,8 @@
           });
         var avgRank = predRanks.length
           ? predRanks.reduce(function (s, v) {
-              return s + v;
-            }, 0) / predRanks.length
+            return s + v;
+          }, 0) / predRanks.length
           : null;
 
         var row = document.createElement("div");
